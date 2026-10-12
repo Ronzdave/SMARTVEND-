@@ -1,0 +1,16 @@
+{
+  "name": "smartvend-ui",
+  "version": "1.0.0",
+  "description": "SmartVend captive-portal UI — DNSC self-service printing kiosk (BSIT capstone).",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "type-check": "node --check scripts/build.mjs && node --check scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/serve.mjs",
+    "validate": "npm run type-check && npm test && npm run build"
+  },
+  "author": "SmartVend Team — DNSC",
+  "license": "UNLICENSED"
+}

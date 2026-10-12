@@ -1,0 +1,3453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SmartVend — DNSC Capstone</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<!-- PDF.js — renders pages on the student's phone, then sends JPEGs to the ESP32.
+     DEPLOYMENT NOTE: the SoftAP has no internet, so before flashing you must copy
+     pdf.min.js + pdf.worker.min.js into LittleFS and change these two URLs to
+     relative paths (e.g. "pdfjs/pdf.min.js"). CDN is only for this preview. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<style>
+/* ── TOKENS ─────────────────────────────────────────────── */
+:root {
+  --bg:         #f5f6fa;
+  --surface:    #ffffff;
+  --surface2:   #f0f2f8;
+  --border:     #dde1ed;
+  --border2:    #c8cde0;
+  --text-1:     #111827;
+  --text-2:     #4b5563;
+  --text-3:     #6b7280;
+  --accent:     #2563eb;
+  --accent-bg:  #eff6ff;
+  --accent-dk:  #1d4ed8;
+  --ok:         #16a34a;
+  --ok-bg:      #f0fdf4;
+  --ok-border:  #bbf7d0;
+  --warn:       #d97706;
+  --warn-bg:    #fffbeb;
+  --warn-border:#fde68a;
+  --danger:     #dc2626;
+  --danger-bg:  #fef2f2;
+  --danger-border:#fecaca;
+  --shadow-sm:  0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+  --shadow-md:  0 4px 12px rgba(0,0,0,.1);
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:         #0f172a;
+    --surface:    #1e293b;
+    --surface2:   #273349;
+    --border:     #334155;
+    --border2:    #475569;
+    --text-1:     #f1f5f9;
+    --text-2:     #b4c0d0;
+    --text-3:     #9aa5b5;
+    --accent:     #3b82f6;
+    --accent-bg:  #1e3a5f;
+    --accent-dk:  #60a5fa;
+    --ok:         #22c55e;
+    --ok-bg:      #052e16;
+    --ok-border:  #166534;
+    --warn:       #f59e0b;
+    --warn-bg:    #1c1500;
+    --warn-border:#78350f;
+    --danger:     #f87171;
+    --danger-bg:  #1f0a0a;
+    --danger-border:#7f1d1d;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:         #0f172a;
+  --surface:    #1e293b;
+  --surface2:   #273349;
+  --border:     #334155;
+  --border2:    #475569;
+  --text-1:     #f1f5f9;
+  --text-2:     #b4c0d0;
+  --text-3:     #9aa5b5;
+  --accent:     #3b82f6;
+  --accent-bg:  #1e3a5f;
+  --accent-dk:  #60a5fa;
+  --ok:         #22c55e;
+  --ok-bg:      #052e16;
+  --ok-border:  #166534;
+  --warn:       #f59e0b;
+  --warn-bg:    #1c1500;
+  --warn-border:#78350f;
+  --danger:     #f87171;
+  --danger-bg:  #1f0a0a;
+  --danger-border:#7f1d1d;
+  color-scheme: dark;
+}
+
+/* ── RESET & BASE ────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; padding: 0; }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: 'Nunito', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── LAYOUT SHELL ────────────────────────────────────────── */
+#shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 430px;
+  margin: 0 auto;
+  background: var(--bg);
+  position: relative;
+}
+
+/* ── SCREEN SYSTEM ───────────────────────────────────────── */
+.screen { display: none; flex-direction: column; flex: 1; overflow-y: auto; }
+.screen.active { display: flex; }
+.screen:focus { outline: none; }
+
+/* ── TOP BAR ─────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  min-height: 60px;
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 50;
+}
+.topbar-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px; height: 44px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-1);
+  cursor: pointer;
+  font-size: 18px;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.topbar-back:hover { background: var(--border); }
+.topbar-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.topbar-info { flex: 1; min-width: 0; }
+.topbar-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-sub {
+  font-size: .75rem;
+  color: var(--text-3);
+  margin-top: 1px;
+}
+.step-pip {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.pip {
+  width: 20px; height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.pip.done { background: var(--accent); }
+.pip.active { background: var(--accent); width: 28px; }
+
+/* ── SCROLL CONTENT ──────────────────────────────────────── */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── BOTTOM ACTION BAR ───────────────────────────────────── */
+.bottom-bar {
+  padding: 16px 20px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── TYPOGRAPHY ──────────────────────────────────────────── */
+.page-heading {
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: var(--text-1);
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.page-sub {
+  font-size: .9rem;
+  color: var(--text-2);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.label-sm {
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-3);
+}
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── CARDS ───────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+.card-title {
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-3);
+  margin-bottom: 12px;
+}
+
+/* ── BUTTONS ─────────────────────────────────────────────── */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 12px 20px;
+  border-radius: var(--radius-md);
+  border: none;
+  font-family: 'Nunito', sans-serif;
+  font-size: .95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .15s, transform .1s;
+  width: 100%;
+  text-decoration: none;
+}
+.btn:active { transform: scale(.98); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) { opacity: .9; }
+.btn-secondary {
+  background: var(--surface2);
+  color: var(--text-1);
+  border: 1.5px solid var(--border);
+}
+.btn-secondary:hover:not(:disabled) { border-color: var(--border2); }
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+.btn-success {
+  background: var(--ok);
+  color: #fff;
+}
+.btn-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.btn-sm { min-height: 44px; font-size: .85rem; padding: 10px 16px; border-radius: var(--radius-sm); width: auto; }
+.btn-row { display: flex; gap: 10px; }
+.btn-row .btn { flex: 1; }
+
+/* ── FORM FIELDS ─────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label {
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.field-label .required { color: var(--danger); margin-left: 2px; }
+.field input, .field select {
+  height: 48px;
+  padding: 0 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text-1);
+  font-family: 'Nunito', sans-serif;
+  font-size: .95rem;
+  outline: none;
+  transition: border-color .15s;
+  width: 100%;
+}
+.field input:focus, .field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+.field input::placeholder { color: var(--text-3); }
+.field-hint { font-size: .75rem; color: var(--text-3); }
+.field-error { font-size: .75rem; color: var(--danger); display: none; }
+.field.error input { border-color: var(--danger); }
+.field.error .field-error { display: block; }
+
+/* ── NOTICES ─────────────────────────────────────────────── */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  font-size: .85rem;
+  line-height: 1.5;
+}
+.notice-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.notice-text { flex: 1; color: var(--text-1); }
+.notice-ok { background: var(--ok-bg); border: 1px solid var(--ok-border); }
+.notice-ok .notice-icon { color: var(--ok); }
+.notice-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+.notice-warn .notice-icon { color: var(--warn); }
+.notice-danger { background: var(--danger-bg); border: 1px solid var(--danger-border); }
+.notice-danger .notice-icon { color: var(--danger); }
+.notice-info { background: var(--accent-bg); border: 1px solid var(--accent); }
+.notice-info .notice-icon { color: var(--accent); }
+
+/* ── STATUS BADGE ────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.badge::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.badge-ok  { background: var(--ok-bg);     color: var(--ok);     border: 1px solid var(--ok-border); }
+.badge-warn{ background: var(--warn-bg);   color: var(--warn);   border: 1px solid var(--warn-border); }
+.badge-danger{background:var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); }
+.badge-neutral{background:var(--surface2);color:var(--text-2);  border:1px solid var(--border);}
+
+/* ── DIVIDER ─────────────────────────────────────────────── */
+.divider { border: none; border-top: 1px solid var(--border); }
+
+/* ── KEY-VALUE ROW ───────────────────────────────────────── */
+.kv { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); gap: 12px; }
+.kv:last-child { border-bottom: none; padding-bottom: 0; }
+.kv:first-child { padding-top: 0; }
+.kv-label { font-size: .875rem; color: var(--text-2); }
+.kv-value { font-size: .9rem; font-weight: 600; color: var(--text-1); text-align: right; }
+.kv-value.accent { color: var(--accent); }
+.kv-value.ok    { color: var(--ok); }
+.kv-value.danger { color: var(--danger); }
+
+/* ── BALANCE TILE ────────────────────────────────────────── */
+.balance-tile {
+  background: var(--accent);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  color: #fff;
+}
+.balance-tile .bt-label { font-size: .75rem; font-weight: 700; opacity: .75; text-transform: uppercase; letter-spacing: .06em; }
+.balance-tile .bt-amount { font-size: 2.25rem; font-weight: 800; line-height: 1.1; margin-top: 4px; font-family:'JetBrains Mono',monospace; }
+.balance-tile .bt-name { font-size: .85rem; opacity: .85; margin-top: 6px; }
+
+/* ── QUICK ACTIONS ───────────────────────────────────────── */
+.quick-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.qa-btn {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .15s, background .15s;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 80px;
+}
+.qa-btn:hover { border-color: var(--accent); background: var(--accent-bg); }
+.qa-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.qa-icon { font-size: 22px; }
+.qa-label { font-size: .82rem; font-weight: 700; color: var(--text-1); line-height: 1.3; }
+
+/* ── RFID SCREEN ─────────────────────────────────────────── */
+.rfid-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 32px 20px;
+  text-align: center;
+  flex: 1;
+  justify-content: center;
+}
+.rfid-target {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  border: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s;
+  position: relative;
+}
+@keyframes rfid-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(37,99,235,.35); }
+  70%  { box-shadow: 0 0 0 20px rgba(37,99,235,0); }
+  100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+}
+.rfid-target.idle { animation: rfid-pulse 2.4s ease-out infinite; }
+.rfid-target.busy { background: var(--surface2); border-color: var(--border2); }
+.rfid-target.off  { background: var(--danger-bg); border-color: var(--danger-border); animation: none; }
+.rfid-icon-inner { font-size: 56px; }
+.rfid-state { font-size: .9rem; font-weight: 700; color: var(--text-2); }
+
+/* ── PAGE THUMBNAIL GRID ─────────────────────────────────── */
+.page-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.page-cell {
+  position: relative;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color .15s;
+  overflow: hidden;
+  aspect-ratio: 3/4;
+  display: flex;
+  flex-direction: column;
+}
+.page-cell:hover { border-color: var(--border2); }
+.page-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.page-cell.selected { border-color: var(--accent); }
+.page-preview-area {
+  flex: 1;
+  background: #f8f9fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  min-height: 0;
+}
+.page-preview-area canvas { max-width: 100%; max-height: 100%; object-fit: contain; background:#fff; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.page-preview-area .thumb-loading { width: 20px; height: 20px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+.page-label {
+  font-size: .65rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 4px 2px;
+  color: var(--text-2);
+}
+.page-check {
+  position: absolute;
+  top: 5px; right: 5px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+}
+.page-cell.selected .page-check { display: flex; }
+
+/* ── PAPER OPTIONS ───────────────────────────────────────── */
+.paper-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.paper-opt {
+  border: 2px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  padding: 16px 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color .15s, background .15s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 80px;
+  align-items: center;
+  justify-content: center;
+}
+.paper-opt:hover { border-color: var(--border2); }
+.paper-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.paper-opt.selected { border-color: var(--accent); background: var(--accent-bg); }
+.paper-opt[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+.paper-size-icon { font-size: 26px; }
+.paper-name { font-size: .85rem; font-weight: 700; color: var(--text-1); }
+.paper-price { font-size: .78rem; color: var(--accent); font-weight: 700; font-family:'JetBrains Mono',monospace; }
+.paper-dim { font-size: .68rem; color: var(--text-3); }
+
+/* ── COPIES STEPPER ──────────────────────────────────────── */
+.stepper { display: flex; align-items: center; gap: 0; border: 1.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; width: fit-content; }
+.stepper-btn {
+  width: 44px; height: 44px;
+  background: var(--surface2);
+  border: none;
+  color: var(--text-1);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
+  font-weight: 700;
+}
+.stepper-btn:hover:not(:disabled) { background: var(--border); }
+.stepper-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.stepper-btn:disabled { opacity: .35; cursor: not-allowed; }
+.stepper-val {
+  min-width: 44px;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 0 8px;
+  color: var(--text-1);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+/* ── PROGRESS BAR ────────────────────────────────────────── */
+.progress-track {
+  background: var(--surface2);
+  border-radius: 100px;
+  height: 8px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 100px;
+  transition: width .4s ease;
+}
+
+/* ── PRINT STEPS ─────────────────────────────────────────── */
+.print-steps { display: flex; flex-direction: column; gap: 0; }
+.ps-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ps-item:last-child { border-bottom: none; padding-bottom: 0; }
+.ps-item:first-child { padding-top: 0; }
+.ps-dot {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-3);
+  background: var(--surface2);
+  transition: all .2s;
+}
+.ps-dot.done { background: var(--ok); border-color: var(--ok); color: #fff; }
+.ps-dot.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ps-text { font-size: .85rem; color: var(--text-2); flex: 1; padding-top: 3px; }
+.ps-text.done { color: var(--text-1); }
+.ps-text.active { color: var(--accent); font-weight: 700; }
+
+/* ── SUCCESS SCREEN ──────────────────────────────────────── */
+.success-mark {
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  background: var(--ok-bg);
+  border: 2px solid var(--ok-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 36px;
+  margin: 0 auto;
+}
+@keyframes pop-in {
+  0%   { transform: scale(.5); opacity: 0; }
+  80%  { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.success-mark { animation: pop-in .4s cubic-bezier(.34,1.56,.64,1) both; }
+
+/* ── TRANSACTION LIST ────────────────────────────────────── */
+.txn-list { display: flex; flex-direction: column; }
+.txn-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.txn-row:last-child { border-bottom: none; }
+.txn-avatar {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.txn-avatar.load   { background: var(--ok-bg); }
+.txn-avatar.print  { background: var(--accent-bg); }
+.txn-body { flex: 1; min-width: 0; }
+.txn-name { font-size: .875rem; font-weight: 600; color: var(--text-1); }
+.txn-meta { font-size: .72rem; color: var(--text-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.txn-amount { font-size: .9rem; font-weight: 700; font-family:'JetBrains Mono',monospace; white-space: nowrap; }
+.txn-amount.cr { color: var(--ok); }
+.txn-amount.dr { color: var(--danger); }
+
+/* ── ADMIN NAV ───────────────────────────────────────────── */
+.admin-tabs {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 2px solid var(--border);
+  background: var(--surface);
+  padding: 0 16px;
+  gap: 0;
+  position: sticky;
+  top: 60px;
+  z-index: 40;
+}
+.admin-tabs::-webkit-scrollbar { display: none; }
+.admin-tab {
+  padding: 14px 15px;
+  min-height: 46px;
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--text-3);
+  cursor: pointer;
+  border: none;
+  background: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  white-space: nowrap;
+  font-family: 'Nunito', sans-serif;
+  transition: color .15s;
+}
+.admin-tab:hover { color: var(--text-1); }
+.admin-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.admin-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ── ADMIN TAB PANELS ────────────────────────────────────── */
+.tab-panel { display: none; flex-direction: column; gap: 14px; padding: 16px 20px; }
+.tab-panel.active { display: flex; }
+
+/* ── STAT TILES ──────────────────────────────────────────── */
+.stat-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.stat-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 12px;
+}
+.stat-num { font-size: 1.5rem; font-weight: 800; font-family:'JetBrains Mono',monospace; color: var(--text-1); }
+.stat-label { font-size: .68rem; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
+
+/* ── STOCK ROWS ──────────────────────────────────────────── */
+.stock-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.stock-item:last-child { border-bottom: none; }
+.stock-name { font-size: .875rem; font-weight: 600; color: var(--text-1); flex: 1; }
+.stock-bar-wrap { width: 80px; }
+.stock-bar-track { height: 6px; background: var(--surface2); border-radius: 100px; overflow: hidden; }
+.stock-bar-fill { height: 100%; border-radius: 100px; transition: width .4s ease; }
+.stock-bar-fill.ok { background: var(--ok); }
+.stock-bar-fill.low { background: var(--danger); }
+
+/* ── TEMP GAUGE ──────────────────────────────────────────── */
+.temp-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.temp-val {
+  font-size: 2.5rem; font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1;
+}
+.temp-val.ok { color: var(--ok); }
+.temp-val.warm { color: var(--warn); }
+.temp-val.hot { color: var(--danger); }
+.temp-meta { font-size: .78rem; color: var(--text-3); margin-top: 4px; }
+
+/* ── INK GRID ────────────────────────────────────────────── */
+.ink-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ink-item { display: flex; flex-direction: column; gap: 6px; }
+.ink-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
+.ink-select {
+  height: 44px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text-1);
+  font-family: 'Nunito', sans-serif;
+  font-size: .875rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+}
+.ink-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+
+/* ── TOAST ───────────────────────────────────────────────── */
+#toast {
+  position: fixed;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--text-1);
+  color: var(--bg);
+  padding: 12px 20px;
+  border-radius: 100px;
+  font-size: .875rem;
+  font-weight: 700;
+  z-index: 999;
+  white-space: nowrap;
+  max-width: calc(100% - 40px);
+  text-align: center;
+  transition: transform .25s cubic-bezier(.34,1.56,.64,1), opacity .2s;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: var(--shadow-md);
+}
+#toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+/* ── SPINNER ─────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+.spinner-dark { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink:0; }
+
+/* ── PORTAL SELECT ───────────────────────────────────────── */
+#portal-screen {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px 20px;
+  gap: 24px;
+}
+.portal-brand { text-align: center; }
+.portal-logo {
+  width: 72px; height: 72px;
+  border-radius: 20px;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 36px;
+  margin: 0 auto 16px;
+  box-shadow: 0 4px 24px rgba(37,99,235,.3);
+}
+.portal-wordmark { font-size: 1.75rem; font-weight: 800; color: var(--text-1); }
+.portal-wordmark span { color: var(--accent); }
+.portal-tagline { font-size: .875rem; color: var(--text-3); margin-top: 4px; }
+.portal-btn {
+  display: flex; align-items: center; gap: 14px;
+  padding: 18px 20px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .15s, box-shadow .15s;
+  box-shadow: var(--shadow-sm);
+}
+.portal-btn:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(37,99,235,.15); }
+.portal-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.portal-btn-icon { font-size: 32px; flex-shrink: 0; }
+.portal-btn-label { font-size: 1rem; font-weight: 700; color: var(--text-1); }
+.portal-btn-desc { font-size: .8rem; color: var(--text-2); margin-top: 2px; }
+.portal-arrow { margin-left: auto; font-size: 18px; color: var(--text-3); }
+.portal-footer { text-align: center; font-size: .72rem; color: var(--text-3); }
+
+/* ── LOAD QUICK AMOUNTS ──────────────────────────────────── */
+.amount-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.amount-chip {
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 100px;
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-1);
+  font-size: .85rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  transition: border-color .15s, background .15s;
+}
+.amount-chip:hover { border-color: var(--accent); background: var(--accent-bg); }
+.amount-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── CONNECTION / OVERLAY (production) ───────────────────── */
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; }
+.conn-dot.off { background: var(--danger); }
+.preview-banner {
+  background: var(--warn-bg);
+  border-bottom: 1px solid var(--warn-border);
+  color: var(--warn);
+  font-size: .7rem;
+  font-weight: 800;
+  text-align: center;
+  padding: 6px 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+#offline-overlay {
+  position: fixed; inset: 0; z-index: 900;
+  background: rgba(15,23,42,.55);
+  display: none; align-items: center; justify-content: center;
+  padding: 24px;
+}
+#offline-overlay.show { display: flex; }
+.offline-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px 24px;
+  max-width: 340px; width: 100%;
+  text-align: center;
+  box-shadow: var(--shadow-md);
+  display: flex; flex-direction: column; gap: 14px; align-items: center;
+}
+.upload-busy { display: flex; align-items: center; gap: 10px; font-size: .9rem; font-weight: 600; color: var(--text-2); padding: 12px 0; }
+
+/* ── PAGE VIEW BUTTON ─────────────────────────────────────── */
+.page-view {
+  position: absolute;
+  top: 5px; left: 5px;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: rgba(17,24,39,.72);
+  color: #fff;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2;
+}
+.page-view:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
+/* ── PAGE PREVIEW OVERLAY ─────────────────────────────────── */
+#preview-overlay {
+  position: fixed; inset: 0; z-index: 950;
+  background: var(--bg);
+  display: none; flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+#preview-overlay.show { display: flex; }
+.preview-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.preview-title { font-size: 1rem; font-weight: 700; color: var(--text-1); }
+.preview-close {
+  width: 44px; height: 44px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-1);
+  font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.preview-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.preview-stage {
+  flex: 1; overflow: auto;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  background: var(--surface2);
+}
+.preview-stage canvas { max-width: 100%; height: auto; background: #fff; box-shadow: var(--shadow-md); }
+.preview-nav {
+  display: flex; gap: 10px;
+  padding: 16px 20px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.preview-nav .btn { flex: 1; }
+
+/* ── RESPONSIVE ──────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* ── UTILITY ─────────────────────────────────────────────── */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+/* ── ICONS ────────────────────────────────────────────────── */
+.ic { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; display: inline-block; vertical-align: middle; }
+.ic-sm { width: 18px; height: 18px; }
+.ic-lg { width: 28px; height: 28px; }
+.hero-ic { width: 56px; height: 56px; stroke-width: 1.75; }
+.notice-icon .ic { width: 18px; height: 18px; }
+.page-check .ic { width: 13px; height: 13px; stroke-width: 3; }
+.txn-avatar .ic { width: 20px; height: 20px; }
+.txn-avatar.load  { color: var(--ok); }
+.txn-avatar.print { color: var(--accent); }
+.paper-opt .ic { width: 26px; height: 26px; color: var(--text-2); stroke-width: 1.75; }
+.paper-opt.selected .ic { color: var(--accent); }
+.success-mark { color: var(--ok); }
+.success-mark .ic { width: 42px; height: 42px; stroke-width: 2.5; }
+.rfid-icon-inner .ic { width: 62px; height: 62px; color: var(--accent); stroke-width: 1.5; }
+.portal-logo { color: #fff; }
+.portal-logo .ic { width: 38px; height: 38px; }
+/* Icon tiles */
+.qa-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--accent-bg); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.portal-btn-icon { width: 48px; height: 48px; border-radius: 14px; background: var(--accent-bg); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+/* Modern balance card */
+.balance-tile { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dk) 100%); box-shadow: 0 8px 24px -8px rgba(37,99,235,.5); }
+/* Ink swatch dots */
+.ink-swatch { width: 12px; height: 12px; border-radius: 4px; display: inline-block; vertical-align: middle; margin-right: 6px; border: 1px solid rgba(0,0,0,.15); }
+/* Password show/hide */
+.pwd-wrap { position: relative; }
+.pwd-wrap input { padding-right: 48px; }
+.pwd-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border: none; background: none; color: var(--text-3); cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); }
+.pwd-toggle:hover { color: var(--text-1); }
+.pwd-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ── DEMO PANEL ──────────────────────────────────────────── */
+.demo-panel {
+  width: 100%;
+  background: linear-gradient(135deg, var(--accent-bg), var(--surface2));
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.demo-panel-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: .72rem; font-weight: 800;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.demo-btn-row { display: flex; gap: 8px; }
+.demo-btn-row .btn { flex: 1; min-height: 40px; font-size: .8rem; }
+
+/* ── MODAL OVERLAY ───────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,.6);
+  z-index: 920;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fade-in .18s ease;
+}
+.modal-overlay.show { display: flex; }
+.modal-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px 20px;
+  max-width: 380px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: pop-in .25s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+
+/* ── SMS NOTIFICATION ────────────────────────────────────── */
+.sms-sheet {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 24px;
+  padding: 20px;
+  font-size: .85rem;
+  box-shadow: 0 10px 40px rgba(0,0,0,.3);
+}
+.sms-sheet .sms-head {
+  display: flex; justify-content: space-between;
+  font-size: .7rem; color: #94a3b8;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #334155;
+}
+.sms-sheet .sms-body {
+  background: #1e293b;
+  padding: 12px 14px;
+  border-radius: 16px;
+  line-height: 1.5;
+}
+
+/* ── HELP LIST ───────────────────────────────────────────── */
+.help-step {
+  display: flex; gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.help-step:last-child { border-bottom: none; }
+.help-num {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800;
+  font-size: .85rem;
+}
+.help-text { font-size: .85rem; color: var(--text-2); line-height: 1.5; }
+.help-text strong { color: var(--text-1); }
+
+/* ── STUDENT LIST (admin) ────────────────────────────────── */
+.student-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.student-row:last-child { border-bottom: none; }
+.student-ava {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.student-info { flex: 1; min-width: 0; }
+.student-info-name { font-size: .9rem; font-weight: 700; color: var(--text-1); }
+.student-info-meta { font-size: .72rem; color: var(--text-3); margin-top: 2px; }
+.student-bal {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 800;
+  font-size: .9rem;
+  color: var(--accent);
+}
+
+/* ── MINI CHART (reports) ────────────────────────────────── */
+.chart-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 120px;
+  padding: 10px 0 0;
+}
+.chart-bar {
+  flex: 1;
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dk) 100%);
+  border-radius: 6px 6px 0 0;
+  min-height: 4px;
+  position: relative;
+  transition: height .4s ease;
+}
+.chart-bar-label {
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: .65rem;
+  font-weight: 700;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.chart-bar-value {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: .65rem;
+  font-weight: 800;
+  color: var(--text-1);
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── TOGGLE SWITCH ───────────────────────────────────────── */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px; height: 24px;
+}
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch-slider {
+  position: absolute; inset: 0;
+  background: var(--border2);
+  border-radius: 24px;
+  cursor: pointer;
+  transition: background .18s;
+}
+.switch-slider::before {
+  content: '';
+  position: absolute;
+  left: 3px; top: 3px;
+  width: 18px; height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .18s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.15);
+}
+.switch input:checked + .switch-slider { background: var(--accent); }
+.switch input:checked + .switch-slider::before { transform: translateX(20px); }
+
+/* ── CONFIRM REVIEW ──────────────────────────────────────── */
+.review-row {
+  display: flex; justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.review-row:last-child { border-bottom: none; }
+.review-row .lbl { font-size: .78rem; color: var(--text-3); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.review-row .val { font-size: .9rem; color: var(--text-1); font-weight: 700; }
+
+.text-center { text-align: center; }
+.w-full { width: 100%; }
+.mt-4 { margin-top: 4px; }
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.row-between { display:flex; align-items:center; justify-content:space-between; }
+</style>
+
+<!-- ── LIVE REGION FOR SCREEN READERS ─────────────────────── -->
+<div aria-live="polite" aria-atomic="true" class="visually-hidden" id="sr-announce"></div>
+
+<!-- ── TOAST ──────────────────────────────────────────────── -->
+<div id="toast" role="status" aria-live="polite"></div>
+
+<!-- ── ICON SPRITE (Lucide-style stroke icons) ────────────── -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="6" y="13" width="12" height="8" rx="1"/><path d="M6 17H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/><path d="M17 6.5h.01"/></symbol>
+    <symbol id="i-card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/><path d="M6 15h4"/></symbol>
+    <symbol id="i-cap" viewBox="0 0 24 24"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/><path d="M22 10v5"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M19.4 4.6l-2.1 2.1M6.7 17.3l-2.1 2.1"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h6"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></symbol>
+    <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M5 3v18l2.5-1.5L10 21l2-1.5L14 21l2.5-1.5L19 21V3l-2.5 1.5L14 3l-2 1.5L10 3 7.5 4.5Z"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-thermometer" viewBox="0 0 24 24"><path d="M14 14.76V4a2 2 0 0 0-4 0v10.76a4 4 0 1 0 4 0Z"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M8.5 15.9a5 5 0 0 1 7 0"/><path d="M12 19h.01"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M17 12h.01"/><path d="M21 9h-4.5a3 3 0 0 0 0 6H21"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 2c2.5 3.5 5 5.5 5 9a5 5 0 0 1-10 0c0-1.6.7-2.8 1.6-3.8C9 8.5 10 9.5 10 11c1-1 2-3.5 2-6 0-1 0-2 0-3Z"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c1.1 0 1.7-.9 1.5-1.8-.2-.9.4-1.7 1.3-1.7H16a5 5 0 0 0 5-5c0-4.8-4-8.5-9-8.5Z"/><circle cx="8" cy="11" r="1"/><circle cx="12" cy="8" r="1"/><circle cx="16" cy="11" r="1"/></symbol>
+    <symbol id="i-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.2"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="11" width="15" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><path d="M12 15v2"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M9.9 4.2A9.6 9.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.1M6.7 6.7A17 17 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 3.3-.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m3 3 18 18"/></symbol>
+  </defs>
+</svg>
+
+<!-- ── PAGE PREVIEW OVERLAY ───────────────────────────────── -->
+<div id="preview-overlay" role="dialog" aria-modal="true" aria-label="Page preview">
+  <div class="preview-topbar">
+    <span class="preview-title" id="preview-title">Page</span>
+    <button class="preview-close" onclick="closePagePreview()" aria-label="Close preview"><svg class="ic ic-sm"><use href="#i-x"></use></svg></button>
+  </div>
+  <div class="preview-stage" id="preview-stage"><span class="spinner-dark" aria-hidden="true"></span></div>
+  <div class="preview-nav">
+    <button class="btn btn-secondary" id="preview-prev" onclick="previewStep(-1)" aria-label="Previous page">‹ Prev</button>
+    <button class="btn btn-primary" id="preview-toggle" onclick="previewToggleSelect()">Add to print</button>
+    <button class="btn btn-secondary" id="preview-next" onclick="previewStep(1)" aria-label="Next page">Next ›</button>
+  </div>
+</div>
+
+<!-- ── OFFLINE OVERLAY ────────────────────────────────────── -->
+<div id="offline-overlay" role="alertdialog" aria-labelledby="offline-title" aria-describedby="offline-desc">
+  <div class="offline-card">
+    <svg class="ic hero-ic" style="color:var(--danger);" aria-hidden="true"><use href="#i-wifi"></use></svg>
+    <h2 id="offline-title" class="page-heading" style="font-size:1.2rem;">Kiosk not reachable</h2>
+    <p id="offline-desc" class="page-sub" style="margin-top:0;">Make sure your phone is still connected to the <strong>DNSC_Smart_Printing_Station</strong> WiFi, then try again.</p>
+    <button class="btn btn-primary" onclick="pingKiosk()">Retry Connection</button>
+  </div>
+</div>
+
+<!-- ── MODAL: Pre-Print Review ─────────────────────────────── -->
+<div class="modal-overlay" id="modal-review" role="dialog" aria-modal="true" aria-labelledby="review-title">
+  <div class="modal-card">
+    <div class="text-center">
+      <svg class="ic hero-ic" style="color:var(--accent);" aria-hidden="true"><use href="#i-printer"></use></svg>
+      <h2 id="review-title" class="page-heading" style="font-size:1.25rem;margin-top:8px;">Confirm Your Print Job</h2>
+      <p class="page-sub mt-4">Review before we send pages to the printer.</p>
+    </div>
+    <div class="card" style="background:var(--surface2);">
+      <div class="review-row"><span class="lbl">Pages</span><span class="val" id="rv-pages">—</span></div>
+      <div class="review-row"><span class="lbl">Paper</span><span class="val" id="rv-paper">—</span></div>
+      <div class="review-row"><span class="lbl">Mode</span><span class="val" id="rv-mode">—</span></div>
+      <div class="review-row"><span class="lbl">Copies</span><span class="val" id="rv-copies">—</span></div>
+      <div class="review-row"><span class="lbl">Total Cost</span><span class="val mono accent" id="rv-total" style="font-size:1.1rem;">—</span></div>
+      <div class="review-row"><span class="lbl">Balance After</span><span class="val mono" id="rv-after">—</span></div>
+    </div>
+    <div class="notice notice-warn" style="font-size:.78rem;">
+      <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg></span>
+      <div class="notice-text">Once you confirm, credits will be reserved and the printer will begin.</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-review')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAndPrint()">Confirm & Print</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL: Insufficient Balance ─────────────────────────── -->
+<div class="modal-overlay" id="modal-insufficient" role="alertdialog" aria-modal="true" aria-labelledby="ins-title">
+  <div class="modal-card">
+    <div class="text-center">
+      <svg class="ic hero-ic" style="color:var(--danger);" aria-hidden="true"><use href="#i-wallet"></use></svg>
+      <h2 id="ins-title" class="page-heading" style="font-size:1.25rem;margin-top:8px;">Not Enough Credits</h2>
+      <p class="page-sub mt-4">Your e-wallet balance can't cover this job.</p>
+    </div>
+    <div class="notice notice-info" style="font-size:.85rem;">
+      <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-info"></use></svg></span>
+      <div class="notice-text">Visit the <strong>admin counter</strong> to load more credits, or print fewer pages.</div>
+    </div>
+    <button class="btn btn-primary" onclick="closeModal('modal-insufficient')">OK, Got It</button>
+  </div>
+</div>
+
+<!-- ── MODAL: Help / How to Use ────────────────────────────── -->
+<div class="modal-overlay" id="modal-help" role="dialog" aria-modal="true" aria-labelledby="help-title">
+  <div class="modal-card">
+    <div class="row-between">
+      <h2 id="help-title" class="page-heading" style="font-size:1.15rem;">How to Print</h2>
+      <button class="topbar-back" onclick="closeModal('modal-help')" aria-label="Close help"><svg class="ic ic-sm"><use href="#i-x"></use></svg></button>
+    </div>
+    <div>
+      <div class="help-step">
+        <div class="help-num">1</div>
+        <div class="help-text"><strong>Tap your DNSC ID</strong> on the kiosk's RFID reader. Your e-wallet opens automatically.</div>
+      </div>
+      <div class="help-step">
+        <div class="help-num">2</div>
+        <div class="help-text"><strong>Upload a PDF</strong> from your phone. The file stays on your device — only the pages you choose are sent.</div>
+      </div>
+      <div class="help-step">
+        <div class="help-num">3</div>
+        <div class="help-text"><strong>Pick pages</strong> and set paper (Short/Long), mode (B&W/Color), and number of copies.</div>
+      </div>
+      <div class="help-step">
+        <div class="help-num">4</div>
+        <div class="help-text"><strong>Confirm & print.</strong> Credits are deducted only after the job finishes. SMS receipt arrives on your phone.</div>
+      </div>
+      <div class="help-step">
+        <div class="help-num">5</div>
+        <div class="help-text"><strong>Collect your pages</strong> from the Epson L3210 tray below the kiosk.</div>
+      </div>
+    </div>
+    <div class="notice notice-info" style="font-size:.78rem;">
+      <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-info"></use></svg></span>
+      <div class="notice-text">Pricing: <strong>Short ₱2/page</strong>, <strong>Long ₱3/page</strong>, Color +₱1/page</div>
+    </div>
+    <button class="btn btn-primary" onclick="closeModal('modal-help')">Got it</button>
+  </div>
+</div>
+
+<!-- ── MODAL: SMS Notification Preview ─────────────────────── -->
+<div class="modal-overlay" id="modal-sms" role="dialog" aria-modal="true" aria-labelledby="sms-title">
+  <div class="modal-card">
+    <div class="text-center">
+      <h2 id="sms-title" class="page-heading" style="font-size:1.1rem;">SMS Receipt Sent</h2>
+      <p class="page-sub mt-4">Via SIM800L to your registered number</p>
+    </div>
+    <div class="sms-sheet">
+      <div class="sms-head">
+        <span>SmartVend DNSC</span>
+        <span id="sms-time">now</span>
+      </div>
+      <div class="sms-body" id="sms-body">—</div>
+    </div>
+    <button class="btn btn-primary" onclick="closeModal('modal-sms')">Close</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     APP SHELL
+══════════════════════════════════════════════════════════ -->
+<div id="shell">
+
+  <!-- Development preview banner (only when URL ends with #preview) -->
+  <div id="preview-banner" class="preview-banner" hidden>Preview mode — sample data, not connected to a real kiosk</div>
+
+  <!-- ── PORTAL SELECT ──────────────────────────────────── -->
+  <div id="portal-screen" role="main" aria-label="Portal selection">
+    <div class="portal-brand" aria-hidden="true">
+      <div class="portal-logo"><svg class="ic" aria-hidden="true"><use href="#i-printer"></use></svg></div>
+    </div>
+    <div class="text-center">
+      <div class="portal-wordmark">Smart<span>Vend</span></div>
+      <div class="portal-tagline">DNSC Self-Service Printing Kiosk</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;" role="navigation" aria-label="Choose portal">
+      <button class="portal-btn" onclick="startStudentPortal()" aria-label="Open Student Portal">
+        <span class="portal-btn-icon" aria-hidden="true"><svg class="ic ic-lg"><use href="#i-cap"></use></svg></span>
+        <div>
+          <div class="portal-btn-label">Student Portal</div>
+          <div class="portal-btn-desc">Print documents using your DNSC ID</div>
+        </div>
+        <span class="portal-arrow" aria-hidden="true">›</span>
+      </button>
+      <button class="portal-btn" onclick="startAdminPortal()" aria-label="Open Admin Portal">
+        <span class="portal-btn-icon" aria-hidden="true"><svg class="ic ic-lg"><use href="#i-settings"></use></svg></span>
+        <div>
+          <div class="portal-btn-label">Admin Portal</div>
+          <div class="portal-btn-desc">Manage credits, stock, and settings</div>
+        </div>
+        <span class="portal-arrow" aria-hidden="true">›</span>
+      </button>
+    </div>
+    <div class="portal-footer">
+      <span id="portal-conn"><span class="conn-dot" id="portal-conn-dot"></span> <span id="portal-conn-text">Checking connection…</span></span><br>
+      SmartVend v1.0 · DNSC Capstone 2026
+    </div>
+  </div>
+
+  <!-- ── STUDENT: TOP BAR ────────────────────────────────── -->
+  <div id="student-topbar" class="topbar" role="banner" hidden>
+    <button class="topbar-back" id="student-back-btn" onclick="studentBack()" aria-label="Go back"><svg class="ic ic-sm"><use href="#i-chevron-left"></use></svg></button>
+    <div class="topbar-info">
+      <div class="topbar-title" id="student-title">SmartVend</div>
+      <div class="topbar-sub" id="student-sub"></div>
+    </div>
+    <div class="step-pip" id="step-pips" aria-hidden="true"></div>
+  </div>
+
+  <!-- ── STUDENT SCREENS ─────────────────────────────────── -->
+
+  <!-- RFID WAIT -->
+  <main class="screen" id="sc-rfid" aria-label="Waiting for RFID card">
+    <div class="rfid-stage">
+      <div style="text-align:center;">
+        <div class="badge badge-ok" id="rfid-conn-badge" style="display:inline-flex;"><span class="conn-dot" id="rfid-conn-dot"></span>Connected to kiosk</div>
+        <div style="font-size:.72rem;color:var(--text-3);margin-top:6px;" class="mono">192.168.4.1 · DNSC_Smart_Printing_Station</div>
+      </div>
+      <div class="rfid-target idle" id="rfid-target" aria-hidden="true">
+        <span class="rfid-icon-inner"><svg class="ic"><use href="#i-card"></use></svg></span>
+      </div>
+      <div>
+        <div class="page-heading" style="font-size:1.25rem;">Tap Your DNSC ID Card</div>
+        <div class="page-sub" id="rfid-state-text" role="status" aria-live="polite">Hold your card on the reader below the screen.</div>
+      </div>
+      <div class="notice notice-info" style="font-size:.8rem;width:100%;">
+        <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-info"></use></svg></span>
+        <div class="notice-text">Short Bond <strong>₱2.00/page</strong> · Long Bond <strong>₱3.00/page</strong></div>
+      </div>
+      <!-- SEMINAR DEMO CONTROLS — replace real RC522 tap -->
+      <div class="demo-panel" aria-label="Demo controls">
+        <div class="demo-panel-title">
+          <svg class="ic ic-sm" aria-hidden="true"><use href="#i-info"></use></svg>
+          Seminar Demo · Simulate Card Tap
+        </div>
+        <div class="demo-btn-row">
+          <button class="btn btn-primary btn-sm" onclick="simulateTap('returning')">Returning Student</button>
+          <button class="btn btn-secondary btn-sm" onclick="simulateTap('new')">New Card</button>
+        </div>
+        <div style="font-size:.72rem;color:var(--text-3);margin-top:6px;">Admin password for demo: <strong class="mono">admin123</strong></div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <button class="btn btn-secondary" onclick="backToPortal()">Back to Home</button>
+    </div>
+  </main>
+
+  <!-- REGISTRATION -->
+  <main class="screen" id="sc-register" aria-label="Card registration">
+    <div class="content">
+      <div>
+        <div class="label-sm">New Card Detected</div>
+        <h1 class="page-heading mt-4">Register Your ID Card</h1>
+        <p class="page-sub">Fill in your details to create an e-wallet account.</p>
+        <div style="margin-top:10px;">
+          <span class="label-sm">Card UID: </span>
+          <span class="mono" id="reg-uid" style="font-size:.8rem;color:var(--text-2);">—</span>
+        </div>
+      </div>
+      <form id="reg-form" onsubmit="doRegister(event)" novalidate aria-label="Student registration form">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="field" id="f-name">
+            <label class="field-label" for="reg-name">Full Name <span class="required" aria-label="required">*</span></label>
+            <input type="text" id="reg-name" name="name" placeholder="e.g. Maria Santos" autocomplete="name" required aria-required="true" aria-describedby="reg-name-err">
+            <span class="field-error" id="reg-name-err" role="alert">Please enter your full name.</span>
+          </div>
+          <div class="field" id="f-sid">
+            <label class="field-label" for="reg-sid">Student ID Number <span class="required" aria-label="required">*</span></label>
+            <input type="text" id="reg-sid" name="sid" placeholder="e.g. 2021-0042" required aria-required="true" aria-describedby="reg-sid-err">
+            <span class="field-error" id="reg-sid-err" role="alert">Please enter your Student ID.</span>
+          </div>
+          <div class="field" id="f-phone">
+            <label class="field-label" for="reg-phone">Phone Number <span class="required" aria-label="required">*</span></label>
+            <input type="tel" id="reg-phone" name="phone" placeholder="09XX-XXX-XXXX" autocomplete="tel" inputmode="numeric" required aria-required="true" aria-describedby="reg-phone-err reg-phone-hint">
+            <span class="field-hint" id="reg-phone-hint">Used to receive SMS confirmation of transactions.</span>
+            <span class="field-error" id="reg-phone-err" role="alert">Enter a valid 11-digit number (09XXXXXXXXX).</span>
+          </div>
+        </div>
+      </form>
+      <div class="notice notice-warn">
+        <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg></span>
+        <div class="notice-text">After registering, go to the admin counter to load credits before printing.</div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <button class="btn btn-primary" id="btn-register" onclick="document.getElementById('reg-form').requestSubmit()">Create Account</button>
+      <button class="btn btn-secondary" onclick="restartRFID()">Cancel</button>
+    </div>
+  </main>
+
+  <!-- DASHBOARD -->
+  <main class="screen" id="sc-dashboard" aria-label="Student dashboard">
+    <div class="content">
+      <div class="balance-tile" aria-label="E-wallet balance">
+        <div class="bt-label">E-Wallet Balance</div>
+        <div class="bt-amount mono" id="dash-balance" aria-live="polite">₱0.00</div>
+        <div class="bt-name" id="dash-name">—</div>
+        <div class="bt-name" id="dash-afford" style="margin-top:4px;opacity:.85;">—</div>
+      </div>
+      <div class="quick-actions" role="list">
+        <button class="qa-btn" onclick="goScreen('sc-upload')" role="listitem" aria-label="Print a document">
+          <span class="qa-icon" aria-hidden="true"><svg class="ic"><use href="#i-printer"></use></svg></span>
+          <span class="qa-label">Print Document</span>
+        </button>
+        <button class="qa-btn" onclick="goScreen('sc-history')" role="listitem" aria-label="View transaction history">
+          <span class="qa-icon" aria-hidden="true"><svg class="ic"><use href="#i-receipt"></use></svg></span>
+          <span class="qa-label">My Transactions</span>
+        </button>
+        <button class="qa-btn" onclick="openModal('modal-help')" role="listitem" aria-label="How to use the kiosk">
+          <span class="qa-icon" aria-hidden="true"><svg class="ic"><use href="#i-info"></use></svg></span>
+          <span class="qa-label">How to Print</span>
+        </button>
+        <button class="qa-btn" onclick="logOut()" role="listitem" aria-label="Log out">
+          <span class="qa-icon" aria-hidden="true"><svg class="ic"><use href="#i-card"></use></svg></span>
+          <span class="qa-label">Log Out</span>
+        </button>
+      </div>
+      <div class="card" id="dash-info-card">
+        <div class="card-title">Account Info</div>
+        <div class="kv">
+          <span class="kv-label">Student ID</span>
+          <span class="kv-value mono" id="dash-sid">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Phone</span>
+          <span class="kv-value mono" id="dash-phone">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Pricing</span>
+          <span class="kv-value">Short ₱2 · Long ₱3</span>
+        </div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <button class="btn btn-secondary" onclick="logOut()">Log Out</button>
+    </div>
+  </main>
+
+  <!-- UPLOAD -->
+  <main class="screen" id="sc-upload" aria-label="Upload PDF document">
+    <div class="content">
+      <div>
+        <h1 class="page-heading">Choose Your Document</h1>
+        <p class="page-sub">Select a PDF file from your phone to print.</p>
+      </div>
+      <label for="pdf-input" style="cursor:pointer;">
+        <div style="border:2px dashed var(--border);border-radius:var(--radius-md);padding:32px 20px;text-align:center;background:var(--surface);transition:border-color .15s;" id="upload-dropzone">
+          <svg class="ic" style="width:44px;height:44px;color:var(--accent);margin-bottom:12px;" aria-hidden="true"><use href="#i-upload"></use></svg>
+          <div style="font-size:.95rem;font-weight:700;color:var(--text-1);">Tap to browse PDF</div>
+          <div style="font-size:.8rem;color:var(--text-3);margin-top:4px;">PDF files only · Rendered privately on your phone</div>
+        </div>
+        <input type="file" id="pdf-input" accept="application/pdf" onchange="handlePDF(event)" aria-label="Choose PDF file" class="visually-hidden">
+      </label>
+      <div id="upload-busy" class="upload-busy" hidden aria-live="polite"><span class="spinner-dark"></span> Reading and rendering PDF…</div>
+      <div id="upload-error" class="notice notice-danger" hidden role="alert">
+        <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></span>
+        <div class="notice-text" id="upload-error-msg">Could not read this PDF. Please try another file.</div>
+      </div>
+      <div id="upload-result" hidden>
+        <div class="card">
+          <div class="card-title">Selected Document</div>
+          <div class="row-between">
+            <div>
+              <div style="font-size:.95rem;font-weight:700;" id="pdf-name">—</div>
+              <div style="font-size:.8rem;color:var(--text-3);margin-top:2px;" id="pdf-pages">—</div>
+            </div>
+            <div class="badge badge-ok">Ready</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <button class="btn btn-primary" id="btn-to-pages" onclick="goScreen('sc-pages')" disabled aria-label="Continue to page selection">Select Pages</button>
+    </div>
+  </main>
+
+  <!-- PAGE SELECTION -->
+  <main class="screen" id="sc-pages" aria-label="Select pages to print">
+    <div class="content">
+      <div>
+        <h1 class="page-heading">Select Pages</h1>
+        <div class="row-between mt-8">
+          <span style="font-size:.85rem;color:var(--text-2);" id="doc-label">—</span>
+          <span id="sel-count-badge" class="badge badge-neutral" aria-live="polite">0 selected</span>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary btn-sm" onclick="selectAll()" aria-label="Select all pages">Select all</button>
+        <button class="btn btn-secondary btn-sm" onclick="clearAll()" aria-label="Clear selection">Clear</button>
+      </div>
+      <div class="page-grid" id="page-grid" role="group" aria-label="Page thumbnails"></div>
+    </div>
+    <div class="bottom-bar">
+      <button class="btn btn-primary" id="btn-to-options" onclick="goScreen('sc-options')" disabled>Set Print Options</button>
+    </div>
+  </main>
+
+  <!-- PRINT OPTIONS -->
+  <main class="screen" id="sc-options" aria-label="Print options">
+    <div class="content">
+      <h1 class="page-heading">Print Options</h1>
+
+      <fieldset style="border:none;padding:0;">
+        <legend class="card-title">Paper Size</legend>
+        <div class="paper-grid" role="radiogroup" aria-label="Paper size">
+          <div class="paper-opt selected" id="opt-short" role="radio" aria-checked="true" tabindex="0"
+               onclick="selectPaper('SHORT')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectPaper('SHORT')}">
+            <svg class="ic" aria-hidden="true"><use href="#i-file"></use></svg>
+            <div class="paper-name">Short Bond</div>
+            <div class="paper-price">₱2.00 / page</div>
+            <div class="paper-dim">8.5 × 11 inches</div>
+          </div>
+          <div class="paper-opt" id="opt-long" role="radio" aria-checked="false" tabindex="0"
+               onclick="selectPaper('LONG')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectPaper('LONG')}">
+            <svg class="ic" aria-hidden="true"><use href="#i-file"></use></svg>
+            <div class="paper-name">Long Bond</div>
+            <div class="paper-price">₱3.00 / page</div>
+            <div class="paper-dim">8.5 × 13 inches</div>
+          </div>
+        </div>
+        <div id="stock-warn" class="notice notice-warn mt-8" hidden role="status" style="font-size:.8rem;">
+          <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg></span>
+          <div class="notice-text" id="stock-warn-msg"></div>
+        </div>
+      </fieldset>
+
+      <fieldset style="border:none;padding:0;">
+        <legend class="card-title">Print Color</legend>
+        <div class="paper-grid" role="radiogroup" aria-label="Print color">
+          <div class="paper-opt selected" id="opt-bw" role="radio" aria-checked="true" tabindex="0"
+               onclick="selectMode('BW')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectMode('BW')}">
+            <svg class="ic" aria-hidden="true"><use href="#i-contrast"></use></svg>
+            <div class="paper-name">Black &amp; White</div>
+            <div class="paper-dim">Saves color ink</div>
+          </div>
+          <div class="paper-opt" id="opt-color" role="radio" aria-checked="false" tabindex="0"
+               onclick="selectMode('COLOR')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectMode('COLOR')}">
+            <svg class="ic" aria-hidden="true"><use href="#i-palette"></use></svg>
+            <div class="paper-name">Color</div>
+            <div class="paper-price" id="color-surcharge-label">+₱1.00 / page</div>
+          </div>
+        </div>
+      </fieldset>
+
+      <div class="card">
+        <div class="row-between">
+          <div>
+            <div class="card-title" style="margin-bottom:4px;">Copies</div>
+            <div style="font-size:.8rem;color:var(--text-3);">Maximum 10 copies per job</div>
+          </div>
+          <div class="stepper" role="group" aria-label="Number of copies">
+            <button class="stepper-btn" onclick="changeCopies(-1)" aria-label="Decrease copies">−</button>
+            <div class="stepper-val" id="copies-val" aria-live="polite" aria-atomic="true">1</div>
+            <button class="stepper-btn" onclick="changeCopies(1)" aria-label="Increase copies">+</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" aria-label="Cost breakdown">
+        <div class="card-title">Cost Summary</div>
+        <div class="kv">
+          <span class="kv-label">Pages selected</span>
+          <span class="kv-value" id="sum-pages">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Rate</span>
+          <span class="kv-value mono" id="sum-rate">₱2.00 / page</span>
+        </div>
+        <div class="kv" id="sum-color-row" hidden>
+          <span class="kv-label">Color surcharge</span>
+          <span class="kv-value mono" id="sum-color">+₱0.00 / page</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Copies</span>
+          <span class="kv-value" id="sum-copies">1</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label" style="font-weight:700;color:var(--text-1);">Total</span>
+          <span class="kv-value mono" id="sum-total" style="font-size:1.1rem;font-weight:800;color:var(--text-1);">₱0.00</span>
+        </div>
+        <hr class="divider" style="margin:6px 0;">
+        <div class="kv">
+          <span class="kv-label">Your balance</span>
+          <span class="kv-value mono" id="sum-bal">₱0.00</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Balance after print</span>
+          <span class="kv-value mono accent" id="sum-after">₱0.00</span>
+        </div>
+      </div>
+      <div id="insufficient-notice" class="notice notice-danger" hidden role="alert">
+        <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></span>
+        <div class="notice-text">Insufficient balance. Please go to the admin counter to load credits first.</div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <button class="btn btn-primary" id="btn-print-now" onclick="openPrintReview()">Review & Print</button>
+    </div>
+  </main>
+
+  <!-- PRINTING PROGRESS -->
+  <main class="screen" id="sc-printing" aria-label="Print job in progress" aria-live="polite">
+    <div class="content">
+      <div class="text-center" style="padding-top:8px;">
+        <svg class="ic hero-ic" style="color:var(--accent);margin-bottom:8px;" aria-hidden="true"><use href="#i-printer"></use></svg>
+        <h1 class="page-heading" id="printing-heading">Printing…</h1>
+        <p class="page-sub mt-4" id="printing-sub">Preparing your document</p>
+      </div>
+      <div class="card">
+        <div class="row-between" style="margin-bottom:10px;">
+          <span class="card-title" style="margin-bottom:0;">Progress</span>
+          <span class="mono" style="font-size:.85rem;font-weight:700;color:var(--accent);" id="print-pct" aria-live="polite">0%</span>
+        </div>
+        <div class="progress-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="print-progress-bar">
+          <div class="progress-fill" id="print-progress" style="width:0%"></div>
+        </div>
+        <div style="font-size:.78rem;color:var(--text-3);margin-top:8px;" id="print-page-label">Page 0 of 0</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Print Steps</div>
+        <div class="print-steps" id="print-steps"></div>
+      </div>
+      <div class="notice notice-warn">
+        <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg></span>
+        <div class="notice-text">Do not close the browser or disconnect from the WiFi network while printing.</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- DONE -->
+  <main class="screen" id="sc-done" aria-label="Print complete">
+    <div class="content">
+      <div class="text-center" style="padding-top:8px;">
+        <div class="success-mark" aria-hidden="true"><svg class="ic"><use href="#i-check"></use></svg></div>
+        <h1 class="page-heading mt-12">Print Complete</h1>
+        <p class="page-sub mt-4">Collect your pages from the printer tray.</p>
+      </div>
+      <div class="card" aria-label="Print receipt">
+        <div class="card-title">Receipt</div>
+        <div class="kv">
+          <span class="kv-label">Pages printed</span>
+          <span class="kv-value mono" id="rcpt-pages">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Paper type</span>
+          <span class="kv-value" id="rcpt-paper">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Color</span>
+          <span class="kv-value" id="rcpt-mode">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Copies</span>
+          <span class="kv-value" id="rcpt-copies">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label" style="font-weight:700;color:var(--text-1);">Amount charged</span>
+          <span class="kv-value mono" id="rcpt-total" style="font-weight:800;"></span>
+        </div>
+      </div>
+      <div class="balance-tile" aria-label="Updated balance">
+        <div class="bt-label">New Balance</div>
+        <div class="bt-amount mono" id="rcpt-balance">₱0.00</div>
+        <div class="bt-name">SMS confirmation sent to your phone</div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="printAnother()">Print Another</button>
+        <button class="btn btn-primary" onclick="logOut()">Done</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- HISTORY -->
+  <main class="screen" id="sc-history" aria-label="Transaction history">
+    <div class="content">
+      <div>
+        <h1 class="page-heading">Transactions</h1>
+        <p class="page-sub" id="hist-sub">—</p>
+      </div>
+      <div class="card" aria-label="Balance">
+        <div class="card-title">Current Balance</div>
+        <div style="font-size:2rem;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--accent);" id="hist-balance">₱0.00</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Recent Activity</div>
+        <div class="txn-list" id="hist-list"><div class="upload-busy"><span class="spinner-dark"></span> Loading…</div></div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <button class="btn btn-secondary" onclick="goScreen('sc-dashboard')">Back to Dashboard</button>
+    </div>
+  </main>
+
+  <!-- ERROR -->
+  <main class="screen" id="sc-error" role="alert" aria-label="Error">
+    <div class="content">
+      <div class="text-center" style="padding-top:16px;">
+        <svg class="ic hero-ic" style="color:var(--danger);" aria-hidden="true"><use href="#i-alert"></use></svg>
+        <h1 class="page-heading mt-12" id="err-heading">Something went wrong</h1>
+        <p class="page-sub mt-4" id="err-msg">Please notify the admin.</p>
+      </div>
+      <div class="card" id="err-refund-card" hidden aria-label="Refund information">
+        <div class="card-title">Automatic Refund Issued</div>
+        <div class="kv">
+          <span class="kv-label">Refund amount</span>
+          <span class="kv-value ok mono" id="err-refund">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">New balance</span>
+          <span class="kv-value mono" id="err-new-bal">—</span>
+        </div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <button class="btn btn-primary" onclick="goScreen('sc-dashboard')">Return to Dashboard</button>
+    </div>
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════
+       ADMIN PORTAL
+  ══════════════════════════════════════════════════════ -->
+
+  <!-- ADMIN LOGIN -->
+  <main class="screen" id="sc-admin-login" aria-label="Admin login">
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:32px 20px;gap:24px;">
+      <div class="text-center">
+        <svg class="ic hero-ic" style="color:var(--accent);margin:0 auto 12px;" aria-hidden="true"><use href="#i-lock"></use></svg>
+        <h1 class="page-heading">Admin Login</h1>
+        <p class="page-sub mt-4">SmartVend Management</p>
+      </div>
+      <form onsubmit="doAdminLogin(event)" novalidate aria-label="Admin login form">
+        <div class="field" id="f-pwd">
+          <label class="field-label" for="admin-pwd">Password</label>
+          <div class="pwd-wrap">
+            <input type="password" id="admin-pwd" autocomplete="current-password" placeholder="Enter admin password" required aria-required="true" aria-describedby="admin-pwd-err">
+            <button type="button" class="pwd-toggle" id="pwd-toggle" onclick="togglePwd()" aria-label="Show password" aria-pressed="false"><svg class="ic ic-sm"><use href="#i-eye"></use></svg></button>
+          </div>
+          <span class="field-error" id="admin-pwd-err" role="alert">Incorrect password.</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:20px;">
+          <button type="submit" class="btn btn-primary" id="btn-admin-login">Log In</button>
+          <button type="button" class="btn btn-secondary" onclick="backToPortal()">Back</button>
+        </div>
+      </form>
+    </div>
+  </main>
+
+  <!-- ADMIN MAIN -->
+  <div id="admin-main" hidden style="display:flex;flex-direction:column;flex:1;">
+    <!-- Admin Top Bar -->
+    <header class="topbar" role="banner">
+      <button class="topbar-back" onclick="adminLogout()" aria-label="Log out"><svg class="ic ic-sm"><use href="#i-chevron-left"></use></svg></button>
+      <div class="topbar-info">
+        <div class="topbar-title">Admin Panel</div>
+        <div class="topbar-sub" id="admin-alert-sub"></div>
+      </div>
+    </header>
+
+    <!-- Tabs -->
+    <nav class="admin-tabs" role="tablist" aria-label="Admin sections">
+      <button class="admin-tab active" role="tab" aria-selected="true" aria-controls="tab-dashboard" id="tab-btn-dashboard" onclick="showTab('dashboard')">Overview</button>
+      <button class="admin-tab" role="tab" aria-selected="false" aria-controls="tab-credits" id="tab-btn-credits" onclick="showTab('credits')">Load Credits</button>
+      <button class="admin-tab" role="tab" aria-selected="false" aria-controls="tab-balance" id="tab-btn-balance" onclick="showTab('balance')">Check Balance</button>
+      <button class="admin-tab" role="tab" aria-selected="false" aria-controls="tab-ink" id="tab-btn-ink" onclick="showTab('ink')">Ink & Stock</button>
+      <button class="admin-tab" role="tab" aria-selected="false" aria-controls="tab-students" id="tab-btn-students" onclick="showTab('students')">Students</button>
+      <button class="admin-tab" role="tab" aria-selected="false" aria-controls="tab-txns" id="tab-btn-txns" onclick="showTab('txns')">Transactions</button>
+      <button class="admin-tab" role="tab" aria-selected="false" aria-controls="tab-reports" id="tab-btn-reports" onclick="showTab('reports')">Reports</button>
+      <button class="admin-tab" role="tab" aria-selected="false" aria-controls="tab-settings" id="tab-btn-settings" onclick="showTab('settings')">Settings</button>
+    </nav>
+
+    <!-- Tab: Dashboard -->
+    <div class="tab-panel active" id="tab-dashboard" role="tabpanel" aria-labelledby="tab-btn-dashboard">
+      <!-- Overheat notice (live region) -->
+      <div id="overheat-notice" class="notice notice-ok" aria-live="assertive">
+        <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg></span>
+        <div class="notice-text">Reading temperature…</div>
+      </div>
+
+      <!-- Temp -->
+      <div class="card" aria-label="System temperature">
+        <div class="row-between" style="margin-bottom:8px;">
+          <div class="card-title" style="margin-bottom:0;">Temperature (DHT22)</div>
+          <button class="btn btn-secondary btn-sm" onclick="loadAdminStatus()" aria-label="Refresh readings"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-refresh"></use></svg> Refresh</button>
+        </div>
+        <div class="temp-row">
+          <div>
+            <div class="temp-val ok" id="temp-val" aria-live="polite">—</div>
+            <div class="temp-meta" id="temp-meta">Threshold: 45°C</div>
+          </div>
+          <svg class="ic" style="width:38px;height:38px;color:var(--accent);" aria-hidden="true"><use href="#i-thermometer"></use></svg>
+        </div>
+      </div>
+
+      <div class="card" aria-label="Paper stock">
+        <div class="card-title">Paper Stock</div>
+        <div class="stock-item">
+          <div style="width:12px;height:12px;border-radius:50%;background:var(--text-3);flex-shrink:0;" id="stock-dot-long" aria-hidden="true"></div>
+          <span class="stock-name">Long Bond Paper</span>
+          <div class="stock-bar-wrap" aria-hidden="true"><div class="stock-bar-track"><div class="stock-bar-fill ok" id="stock-bar-long" style="width:0%;"></div></div></div>
+          <span class="badge badge-neutral" id="stock-badge-long">—</span>
+        </div>
+        <div class="stock-item">
+          <div style="width:12px;height:12px;border-radius:50%;background:var(--text-3);flex-shrink:0;" id="stock-dot-short" aria-hidden="true"></div>
+          <span class="stock-name">Short Bond Paper</span>
+          <div class="stock-bar-wrap" aria-hidden="true"><div class="stock-bar-track"><div class="stock-bar-fill ok" id="stock-bar-short" style="width:0%;"></div></div></div>
+          <span class="badge badge-neutral" id="stock-badge-short">—</span>
+        </div>
+        <div style="font-size:.72rem;color:var(--text-3);margin-top:10px;">E3F-DS30C4 photoelectric sensors · Auto-detected</div>
+      </div>
+
+      <div class="card" aria-label="System health">
+        <div class="card-title">System Health</div>
+        <div class="kv">
+          <span class="kv-label">Printer (USB · Epson L3210)</span>
+          <span class="badge badge-neutral" id="hw-printer">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">SIM800L signal</span>
+          <span class="kv-value" id="hw-sim">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">SD card</span>
+          <span class="badge badge-neutral" id="hw-sd">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Phones connected</span>
+          <span class="kv-value mono" id="hw-clients">—</span>
+        </div>
+      </div>
+
+      <div class="card" aria-label="Today's summary">
+        <div class="card-title">Today</div>
+        <div class="stat-row">
+          <div class="stat-tile">
+            <div class="stat-num" id="today-jobs">—</div>
+            <div class="stat-label">Print Jobs</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-num" id="today-pages">—</div>
+            <div class="stat-label">Pages</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-num mono" id="today-earn">—</div>
+            <div class="stat-label">Collected</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Load Credits -->
+    <div class="tab-panel" id="tab-credits" role="tabpanel" aria-labelledby="tab-btn-credits">
+      <div>
+        <h2 class="page-heading" style="font-size:1.1rem;">Load Credits</h2>
+        <p class="page-sub">Add e-wallet balance for a student using cash payment.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Student ID</div>
+        <div class="field">
+          <label class="field-label" for="load-sid">Student ID Number</label>
+          <input type="text" id="load-sid" placeholder="e.g. 2021-0042" aria-label="Enter student ID">
+        </div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="lookupStudent()" aria-label="Look up student by ID">Look Up Student</button>
+        <div id="lookup-result" hidden style="margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border);">
+          <div style="font-size:.875rem;font-weight:700;color:var(--text-1);" id="lookup-name">—</div>
+          <div style="font-size:.78rem;color:var(--text-3);margin-top:2px;" id="lookup-sid-disp">—</div>
+          <div style="font-size:.875rem;font-weight:700;color:var(--accent);margin-top:6px;font-family:'JetBrains Mono',monospace;" id="lookup-bal">Balance: —</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Amount Received (₱)</div>
+        <div class="amount-chips" role="group" aria-label="Quick amount selection">
+          <button class="amount-chip" onclick="setAmount(50)" aria-label="₱50">₱50</button>
+          <button class="amount-chip" onclick="setAmount(100)" aria-label="₱100">₱100</button>
+          <button class="amount-chip" onclick="setAmount(150)" aria-label="₱150">₱150</button>
+          <button class="amount-chip" onclick="setAmount(200)" aria-label="₱200">₱200</button>
+          <button class="amount-chip" onclick="setAmount(500)" aria-label="₱500">₱500</button>
+        </div>
+        <div class="field" style="margin-top:12px;">
+          <label class="field-label" for="load-amount">Custom Amount</label>
+          <input type="number" id="load-amount" placeholder="0" min="1" max="5000" step="1" inputmode="numeric" aria-label="Enter custom amount in pesos">
+        </div>
+      </div>
+      <button class="btn btn-primary" id="btn-load-credits" onclick="doLoadCredits()" aria-label="Load credits to student account">Confirm Load Credits</button>
+      <div id="load-ok" class="notice notice-ok" hidden role="status">
+        <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg></span>
+        <div class="notice-text" id="load-ok-msg">Credits loaded.</div>
+      </div>
+    </div>
+
+    <!-- Tab: Check Balance -->
+    <div class="tab-panel" id="tab-balance" role="tabpanel" aria-labelledby="tab-btn-balance">
+      <div>
+        <h2 class="page-heading" style="font-size:1.1rem;">Check Balance</h2>
+        <p class="page-sub">Look up any student's current e-wallet balance.</p>
+      </div>
+      <div class="card">
+        <div class="field">
+          <label class="field-label" for="chk-q">Student ID or Name</label>
+          <input type="search" id="chk-q" placeholder="Search…" aria-label="Search by student ID or name">
+        </div>
+        <button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="checkBalance()" aria-label="Search student">Search</button>
+      </div>
+      <div class="card" id="chk-result" hidden aria-label="Student balance result">
+        <div class="card-title">Student Account</div>
+        <div class="kv">
+          <span class="kv-label">Name</span>
+          <span class="kv-value" id="chk-name">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Student ID</span>
+          <span class="kv-value mono" id="chk-sid">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Phone</span>
+          <span class="kv-value mono" id="chk-phone">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Balance</span>
+          <span class="kv-value mono accent" id="chk-bal" style="font-size:1.2rem;font-weight:800;">₱0.00</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Ink & Stock -->
+    <div class="tab-panel" id="tab-ink" role="tabpanel" aria-labelledby="tab-btn-ink">
+      <div>
+        <h2 class="page-heading" style="font-size:1.1rem;">Ink & Paper Stock</h2>
+        <p class="page-sub">Update ink levels manually from the Epson L3210 display. Saved to /ink.csv on the SD card.</p>
+      </div>
+      <div class="notice notice-info">
+        <span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-info"></use></svg></span>
+        <div class="notice-text">Check the printer's ink indicator, then update the levels below. The system cannot read ink automatically.</div>
+      </div>
+      <div class="card" aria-label="Ink level settings">
+        <div class="card-title">Epson L3210 Ink Levels</div>
+        <div class="ink-grid">
+          <div class="ink-item">
+            <label class="ink-label" for="ink-black"><span class="ink-swatch" style="background:#1f2937"></span>Black</label>
+            <select id="ink-black" class="ink-select" onchange="updateInk()" aria-label="Black ink level">
+              <option value="Full">Full</option>
+              <option value="Half">Half</option>
+              <option value="Low">Low</option>
+              <option value="Empty">Empty</option>
+            </select>
+          </div>
+          <div class="ink-item">
+            <label class="ink-label" for="ink-cyan"><span class="ink-swatch" style="background:#06b6d4"></span>Cyan</label>
+            <select id="ink-cyan" class="ink-select" onchange="updateInk()" aria-label="Cyan ink level">
+              <option value="Full">Full</option>
+              <option value="Half">Half</option>
+              <option value="Low">Low</option>
+              <option value="Empty">Empty</option>
+            </select>
+          </div>
+          <div class="ink-item">
+            <label class="ink-label" for="ink-magenta"><span class="ink-swatch" style="background:#db2777"></span>Magenta</label>
+            <select id="ink-magenta" class="ink-select" onchange="updateInk()" aria-label="Magenta ink level">
+              <option value="Full">Full</option>
+              <option value="Half">Half</option>
+              <option value="Low">Low</option>
+              <option value="Empty">Empty</option>
+            </select>
+          </div>
+          <div class="ink-item">
+            <label class="ink-label" for="ink-yellow"><span class="ink-swatch" style="background:#eab308"></span>Yellow</label>
+            <select id="ink-yellow" class="ink-select" onchange="updateInk()" aria-label="Yellow ink level">
+              <option value="Full">Full</option>
+              <option value="Half">Half</option>
+              <option value="Low">Low</option>
+              <option value="Empty">Empty</option>
+            </select>
+          </div>
+        </div>
+        <div id="ink-notice" style="margin-top:12px;"></div>
+        <button class="btn btn-primary btn-sm" id="btn-save-ink" style="margin-top:12px;" onclick="saveInk()" aria-label="Save ink levels">Save Ink Levels</button>
+      </div>
+      <div class="card" aria-label="Paper tray controls">
+        <div class="card-title">Paper Tray Refill</div>
+        <p style="font-size:.82rem;color:var(--text-2);margin-bottom:12px;">After refilling a tray, mark it here to clear the low stock alert. Sensors auto-detect for the next print job.</p>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="refillPaper('LONG')" aria-label="Mark long bond as refilled"><svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg> Long Refilled</button>
+          <button class="btn btn-secondary" onclick="refillPaper('SHORT')" aria-label="Mark short bond as refilled"><svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg> Short Refilled</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Transactions -->
+    <div class="tab-panel" id="tab-txns" role="tabpanel" aria-labelledby="tab-btn-txns">
+      <div>
+        <h2 class="page-heading" style="font-size:1.1rem;">All Transactions</h2>
+        <p class="page-sub">From /transactions.csv on the SD card</p>
+      </div>
+      <div class="card">
+        <div class="row-between">
+          <div>
+            <div class="card-title">Collected Today</div>
+            <div style="font-size:2rem;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--ok);" id="admin-total">—</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="card-title">Active Students</div>
+            <div style="font-size:2rem;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--accent);" id="admin-active">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row-between" style="margin-bottom:4px;">
+          <div class="card-title" style="margin-bottom:0;">Recent</div>
+          <button class="btn btn-secondary btn-sm" onclick="renderAdminTxns()" aria-label="Refresh transactions"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
+        </div>
+        <div class="txn-list" id="admin-txn-list"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Students (NEW) -->
+    <div class="tab-panel" id="tab-students" role="tabpanel" aria-labelledby="tab-btn-students">
+      <div>
+        <h2 class="page-heading" style="font-size:1.1rem;">Registered Students</h2>
+        <p class="page-sub">All students in /students.csv</p>
+      </div>
+      <div class="card">
+        <div class="field">
+          <label class="field-label" for="stu-search">Search</label>
+          <input type="search" id="stu-search" placeholder="Name, ID, or phone…" oninput="renderStudentsAdmin()" aria-label="Search students">
+        </div>
+      </div>
+      <div class="card">
+        <div class="row-between" style="margin-bottom:4px;">
+          <div class="card-title" style="margin-bottom:0;">Students</div>
+          <span class="badge badge-neutral" id="stu-count">—</span>
+        </div>
+        <div id="stu-list"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Reports (NEW) -->
+    <div class="tab-panel" id="tab-reports" role="tabpanel" aria-labelledby="tab-btn-reports">
+      <div>
+        <h2 class="page-heading" style="font-size:1.1rem;">Weekly Report</h2>
+        <p class="page-sub">Printing revenue & activity · Oct 6–12</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Daily Collections (₱)</div>
+        <div class="chart-wrap" id="report-chart" aria-label="Weekly revenue chart"></div>
+        <div style="height: 26px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">This Week</div>
+        <div class="kv">
+          <span class="kv-label">Total collected</span>
+          <span class="kv-value mono accent" id="report-total">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Daily average</span>
+          <span class="kv-value mono" id="report-avg">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Peak day</span>
+          <span class="kv-value mono" id="report-peak">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Print jobs</span>
+          <span class="kv-value mono" id="report-jobs">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Pages printed</span>
+          <span class="kv-value mono" id="report-pages">—</span>
+        </div>
+        <div class="kv">
+          <span class="kv-label">Active students</span>
+          <span class="kv-value mono" id="report-students">—</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Export</div>
+        <p style="font-size:.82rem;color:var(--text-2);margin-bottom:10px;">Download weekly data as CSV from the SD card.</p>
+        <div class="btn-row">
+          <button class="btn btn-secondary btn-sm" onclick="toast('weekly-report.csv exported')">Export CSV</button>
+          <button class="btn btn-secondary btn-sm" onclick="toast('Report sent to admin email')">Email Report</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Settings (NEW) -->
+    <div class="tab-panel" id="tab-settings" role="tabpanel" aria-labelledby="tab-btn-settings">
+      <div>
+        <h2 class="page-heading" style="font-size:1.1rem;">Settings</h2>
+        <p class="page-sub">Pricing, notifications, and session controls</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Pricing (₱ per page)</div>
+        <div class="field" style="margin-bottom:10px;">
+          <label class="field-label" for="set-short">Short Bond</label>
+          <input type="number" id="set-short" value="2" min="1" max="20" step="0.5" inputmode="decimal">
+        </div>
+        <div class="field" style="margin-bottom:10px;">
+          <label class="field-label" for="set-long">Long Bond</label>
+          <input type="number" id="set-long" value="3" min="1" max="20" step="0.5" inputmode="decimal">
+        </div>
+        <div class="field">
+          <label class="field-label" for="set-color">Color surcharge</label>
+          <input type="number" id="set-color" value="1" min="0" max="10" step="0.5" inputmode="decimal">
+          <span class="field-hint">Extra ₱ added per page for color printing</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">SMS Notifications (SIM800L)</div>
+        <div class="row-between">
+          <div>
+            <div style="font-size:.9rem;font-weight:700;">Send SMS confirmations</div>
+            <div style="font-size:.78rem;color:var(--text-3);margin-top:2px;">Transaction receipts to student's phone</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="set-sms" checked>
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Student Session</div>
+        <div class="field">
+          <label class="field-label" for="set-timeout">Idle logout (seconds)</label>
+          <input type="number" id="set-timeout" value="90" min="30" max="300" step="10" inputmode="numeric">
+          <span class="field-hint">Auto-logout after this long with no activity</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Admin Password</div>
+        <div class="field">
+          <input type="password" id="set-newpw" placeholder="New password">
+        </div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="toast('Password hash updated on SD card')">Change Password</button>
+      </div>
+      <button class="btn btn-primary" onclick="saveSettings()">Save All Settings</button>
+
+      <div class="card" style="border-color:var(--warn);background:var(--warn-bg);">
+        <div class="card-title" style="color:var(--warn);">⚠ Seminar Demo · Hardware Simulation</div>
+        <p style="font-size:.78rem;color:var(--text-2);margin-bottom:12px;">Simulate hardware events to walk through alert flows during the demo.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <button class="btn btn-secondary btn-sm" onclick="simHardware('overheat')">🔥 Overheat</button>
+          <button class="btn btn-secondary btn-sm" onclick="simHardware('cool')">❄ Cool Down</button>
+          <button class="btn btn-secondary btn-sm" onclick="simHardware('paper-low')">📄 Paper Low</button>
+          <button class="btn btn-secondary btn-sm" onclick="simHardware('paper-ok')">✓ Paper OK</button>
+          <button class="btn btn-secondary btn-sm" onclick="simHardware('ink-low')">🎨 Ink Empty</button>
+          <button class="btn btn-secondary btn-sm" onclick="simHardware('ink-ok')">✓ Ink Full</button>
+          <button class="btn btn-secondary btn-sm" onclick="simHardware('printer-off')">🖨 Printer Off</button>
+          <button class="btn btn-secondary btn-sm" onclick="simHardware('printer-on')">✓ Printer On</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- admin-main -->
+
+</div><!-- shell -->
+
+<script>
+"use strict";
+
+/* ===========================================================
+   SmartVend — production captive-portal UI
+   Served from ESP32-S2 LittleFS at http://192.168.4.1/
+   Talks to the firmware over HTTP (same origin). No mock data
+   in production — every screen reflects real device state.
+   -----------------------------------------------------------
+   FIRMWARE HTTP API to implement on the ESP32-S2 (all JSON
+   unless noted). Base URL is the SoftAP root, so paths are
+   relative ("/api/...").
+
+   STUDENT
+   GET  /api/session
+        -> {"status":"idle"}
+         | {"status":"new",  "uid":"3A:B2:C4:D1"}
+         | {"status":"known","student":{uid,name,sid,phone,balance}}
+        The phone polls this. On a fresh RFID tap the ESP32
+        returns "new"/"known" ONCE, then reverts to "idle".
+   POST /api/register        {uid,name,sid,phone}
+        -> {"ok":true,"student":{...}} | {"ok":false,"error":"..."}
+        (appends a row to /students.csv)
+   POST /api/print/start     {uid,paper:"SHORT"|"LONG",mode:"BW"|"COLOR",copies,pages:[1,3,4]}
+        -> {"ok":true,"jobId":"..."} | {"ok":false,"error":"INSUFFICIENT"|"NO_PAPER"|"..."}
+        (verifies balance = pages*(rate+colorSurcharge)*copies and reserves it.
+         The phone already renders B&W pages to grayscale, so "mode" is just
+         for the receipt/log — the JPEGs it uploads are print-ready as-is.)
+   POST /api/print/page?job=<jobId>&page=<n>   body: raw image/jpeg
+        -> {"ok":true} (ESP32 buffers the page image to SD)
+   POST /api/print/finish    {jobId}
+        -> {"ok":true,"balance":<num>} | {"ok":false,"error":"...","refund":<num>,"balance":<num>}
+        (feeds paper, USB-prints all copies, deducts, sends SMS,
+         returns when the physical job finishes; on jam it refunds)
+   GET  /api/history?uid=<uid>
+        -> {"balance":<num>,"transactions":[{type,paper,pages,copies,amount,balAfter,ts}]}
+
+   ADMIN
+   POST /api/admin/login     {password} -> {"ok":true} | {"ok":false}
+        SECURITY: store only a HASH of the admin password on the SD card
+        (never plaintext), compare server-side, and lock out after ~5 bad
+        tries. This UI keeps no password and re-verifies every action.
+   GET  /api/admin/status
+        -> {temp,threshold,ink:{black,cyan,magenta,yellow},
+            stock:{LONG:"OK"|"LOW",SHORT:"OK"|"LOW"},
+            printer:"online"|"offline",   // USB host link to the Epson L3210
+            sim:{signal:0-5},             // SIM800L bars
+            sd:"ok"|"error",              // MicroSD mount state
+            clients:<n>,                  // phones joined to the SoftAP
+            today:{jobs,pages,collected}}
+   POST /api/admin/credits   {sid,amount}
+        -> {"ok":true,"student":{...}} | {"ok":false,"error":"NOT_FOUND"|"..."}
+   GET  /api/admin/student?q=<sid|name>
+        -> {"ok":true,"student":{...}} | {"ok":false}
+   POST /api/admin/ink       {black,cyan,magenta,yellow} -> {"ok":true}
+   POST /api/admin/refill    {type:"LONG"|"SHORT"} -> {"ok":true}
+   GET  /api/admin/transactions
+        -> {collectedToday,activeStudents,
+            transactions:[{name,sid,type,paper,pages,copies,amount,ts}]}
+
+   IT / ENGINEERING PRINCIPLES THIS SYSTEM FOLLOWS
+   - Security: no secrets in the client; hashed admin password; admin
+     session auto-logs-out after 3 min idle; student session after 90 s.
+   - Data integrity: the SERVER is the source of truth for balance. It
+     verifies and reserves credit in /print/start and only deducts in
+     /finish (atomic), so a lost connection never charges for unprinted
+     pages. Re-validate every amount server-side — never trust the client.
+   - Input validation: name/ID/phone (09XXXXXXXXX) checked here AND must be
+     re-checked on the ESP32; credit load is integer, capped at ₱5000.
+   - Least privilege: students can only read their own balance/history;
+     crediting and ink/stock changes require the admin session.
+   - Reliability & feedback: every request has loading, success, and error
+     states; the printer buffers each page to SD before feeding paper.
+   - Injection safety: sanitize any field written to the CSV files (strip
+     commas/newlines) so /students.csv and /transactions.csv can't be
+     corrupted by crafted input.
+   =========================================================== */
+
+const CONFIG = {
+  API_BASE:       '',        // same origin as the ESP32 SoftAP
+  RFID_POLL_MS:   1500,      // how often the phone checks for a card tap
+  STATUS_POLL_MS: 8000,      // admin dashboard auto-refresh
+  PRINT_DPI:      150,       // render scale for page JPEGs sent to the printer
+  JPEG_QUALITY:   0.85,
+  COLOR_SURCHARGE: 1,        // extra ₱ per page for COLOR vs Black & White (set 0 to disable)
+  IDLE_LOGOUT_MS: 90000,     // auto-logout a logged-in student after this much inactivity
+  IDLE_WARN_MS:   15000,     // warn this long before the auto-logout fires
+  ADMIN_IDLE_MS:  180000,    // auto-logout an idle admin session (3 min)
+  MAX_LOAD:       5000,      // cap a single credit load (₱) — server must re-check
+  MAX_COPIES:     10,
+  PREVIEW: true,  // DEMO BUILD — mock backend always on (no hardware needed for seminar)
+  DEMO_MODE: true,
+};
+const RATE = { SHORT: 2, LONG: 3 };
+
+// PDF.js worker (see the deployment note in <head>).
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+// ── SESSION STATE (per student, in-memory only) ────────────
+let session = { student: null, pdf: null, doc: null, selectedPages: [], paper: 'SHORT', copies: 1, mode: 'BW' };
+let stockState = { LONG: null, SHORT: null };
+let rfidTimer = null, statusTimer = null;
+
+// ── API HELPER ─────────────────────────────────────────────
+async function api(path, { method = 'GET', body = null, raw = false, query = null } = {}) {
+  if (CONFIG.PREVIEW) return MOCK(path, method, body, query);
+  let url = CONFIG.API_BASE + path;
+  if (query) url += '?' + new URLSearchParams(query).toString();
+  const opts = { method };
+  if (body != null) {
+    if (raw) opts.body = body;                    // Blob / ArrayBuffer (JPEG)
+    else { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+  }
+  const res = await fetch(url, opts);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('json') ? res.json() : res.text();
+}
+
+// ── CONNECTION STATE ───────────────────────────────────────
+function setOnline(ok) {
+  const overlay = document.getElementById('offline-overlay');
+  // Only block with the overlay while a student is mid-flow (not on portal/admin login).
+  const inStudentFlow = ['sc-register','sc-dashboard','sc-upload','sc-pages','sc-options','sc-history']
+    .some(id => document.getElementById(id)?.classList.contains('active'));
+  overlay.classList.toggle('show', !ok && inStudentFlow && !CONFIG.PREVIEW);
+
+  const dot = document.getElementById('rfid-conn-dot');
+  const badge = document.getElementById('rfid-conn-badge');
+  const stateText = document.getElementById('rfid-state-text');
+  const target = document.getElementById('rfid-target');
+  if (dot && badge) {
+    dot.classList.toggle('off', !ok);
+    badge.className = 'badge ' + (ok ? 'badge-ok' : 'badge-danger');
+    badge.lastChild && (badge.childNodes[1].nodeValue = ok ? 'Connected to kiosk' : 'Reconnecting…');
+  }
+  if (target && document.getElementById('sc-rfid').classList.contains('active')) {
+    target.classList.toggle('off', !ok);
+    if (stateText) stateText.textContent = ok
+      ? 'Hold your card on the reader below the screen.'
+      : 'Lost connection — check your WiFi and stay near the kiosk.';
+  }
+  // Portal footer indicator
+  const pDot = document.getElementById('portal-conn-dot');
+  const pTxt = document.getElementById('portal-conn-text');
+  if (pDot && pTxt) {
+    pDot.classList.toggle('off', !ok);
+    pTxt.textContent = ok ? 'Connected to DNSC_Smart_Printing_Station' : 'Not connected to the kiosk WiFi';
+  }
+}
+
+async function pingKiosk() {
+  try { await api('/api/session'); setOnline(true); }
+  catch { setOnline(false); }
+}
+
+// ── SCREEN NAV ─────────────────────────────────────────────
+const STUDENT_SCREENS = ['sc-rfid','sc-register','sc-dashboard','sc-upload','sc-pages','sc-options','sc-printing','sc-done','sc-error','sc-history'];
+
+function goScreen(id) {
+  STUDENT_SCREENS.forEach(s => document.getElementById(s)?.classList.remove('active'));
+  const target = document.getElementById(id);
+  if (target) {
+    target.classList.add('active');
+    target.scrollTop = 0;
+    // Move keyboard/screen-reader focus into the new screen.
+    target.setAttribute('tabindex', '-1');
+    setTimeout(() => target.focus({ preventScroll: true }), 0);
+  }
+  updateTopbar(id);
+  announce(target?.getAttribute('aria-label') || '');
+  if (id === 'sc-history') renderHistory();
+  if (id === 'sc-options') refreshStockForOptions();
+  // RFID polling only runs while the tap screen is visible.
+  if (id === 'sc-rfid') startRFIDPolling(); else stopRFIDPolling();
+  // Idle auto-logout runs whenever a student is logged in (except mid-print).
+  if (idleEligible()) resetIdleTimer(); else stopIdleTimer();
+}
+
+function updateTopbar(id) {
+  const bar = document.getElementById('student-topbar');
+  bar.hidden = (id === 'sc-rfid' || !STUDENT_SCREENS.includes(id));
+  const titles = {
+    'sc-register':  ['Register Card',    null],
+    'sc-dashboard': ['My Account',       null],
+    'sc-upload':    ['Upload Document',  [1,3]],
+    'sc-pages':     ['Select Pages',     [2,3]],
+    'sc-options':   ['Print Options',    [3,3]],
+    'sc-printing':  ['Printing…',        null],
+    'sc-done':      ['Print Complete',   null],
+    'sc-error':     ['Error',            null],
+    'sc-history':   ['My Transactions',  null],
+  };
+  const [title, steps] = titles[id] || ['SmartVend', null];
+  document.getElementById('student-title').textContent = title;
+  document.getElementById('student-sub').textContent = session.student?.name || '';
+  const pips = document.getElementById('step-pips');
+  pips.innerHTML = '';
+  if (steps) {
+    const [cur, total] = steps;
+    for (let i = 1; i <= total; i++) {
+      const d = document.createElement('div');
+      d.className = 'pip' + (i < cur ? ' done' : i === cur ? ' active' : '');
+      pips.appendChild(d);
+    }
+  }
+}
+
+function studentBack() {
+  const map = {
+    'sc-register':'sc-rfid', 'sc-dashboard':'sc-rfid',
+    'sc-upload':'sc-dashboard', 'sc-pages':'sc-upload',
+    'sc-options':'sc-pages', 'sc-history':'sc-dashboard',
+  };
+  const active = STUDENT_SCREENS.find(s => document.getElementById(s)?.classList.contains('active'));
+  goScreen(map[active] || 'sc-rfid');
+}
+
+// ── PORTAL ─────────────────────────────────────────────────
+function startStudentPortal() {
+  document.getElementById('portal-screen').hidden = true;
+  document.getElementById('sc-admin-login').classList.remove('active');
+  goScreen('sc-rfid');
+}
+function startAdminPortal() {
+  document.getElementById('portal-screen').hidden = true;
+  stopRFIDPolling();
+  document.getElementById('student-topbar').hidden = true;
+  STUDENT_SCREENS.forEach(s => document.getElementById(s)?.classList.remove('active'));
+  goAdminScreen('sc-admin-login');
+}
+function backToPortal() {
+  stopRFIDPolling(); stopStatusPolling(); stopIdleTimer(); stopAdminIdle();
+  session = { student: null, pdf: null, doc: null, selectedPages: [], paper: 'SHORT', copies: 1, mode: 'BW' };
+  document.getElementById('offline-overlay').classList.remove('show');
+  STUDENT_SCREENS.forEach(s => document.getElementById(s)?.classList.remove('active'));
+  document.getElementById('sc-admin-login').classList.remove('active');
+  document.getElementById('student-topbar').hidden = true;
+  const m = document.getElementById('admin-main'); m.hidden = true; m.style.display = '';
+  document.getElementById('portal-screen').hidden = false;
+  pingKiosk();
+}
+function goAdminScreen(id) {
+  document.querySelectorAll('#shell > main').forEach(s => s.classList.remove('active'));
+  document.getElementById(id)?.classList.add('active');
+}
+
+// ── TOAST & ANNOUNCE ───────────────────────────────────────
+let toastTimer = null;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+function announce(msg) { document.getElementById('sr-announce').textContent = msg; }
+
+// ── IDLE AUTO-LOGOUT (kiosk security) ──────────────────────
+let idleTimer = null, idleWarnTimer = null;
+function idleEligible() {
+  return !!session.student && !document.getElementById('sc-printing').classList.contains('active');
+}
+function resetIdleTimer() {
+  stopIdleTimer();
+  if (!idleEligible()) return;
+  idleWarnTimer = setTimeout(() => {
+    toast('Still there? Logging out in ' + Math.round(CONFIG.IDLE_WARN_MS/1000) + 's…');
+    announce('Session about to expire from inactivity.');
+  }, Math.max(0, CONFIG.IDLE_LOGOUT_MS - CONFIG.IDLE_WARN_MS));
+  idleTimer = setTimeout(() => { toast('Logged out due to inactivity.'); logOut(); }, CONFIG.IDLE_LOGOUT_MS);
+}
+function stopIdleTimer() { clearTimeout(idleTimer); clearTimeout(idleWarnTimer); idleTimer = idleWarnTimer = null; }
+
+// ── RFID POLLING (real card taps from the ESP32) ───────────
+function startRFIDPolling() {
+  stopRFIDPolling();
+  const poll = async () => {
+    try {
+      const r = await api('/api/session');
+      setOnline(true);
+      if (r.status === 'known' && r.student) {
+        stopRFIDPolling();
+        session.student = { ...r.student };
+        refreshDashboard();
+        goScreen('sc-dashboard');
+        toast('Welcome, ' + r.student.name);
+      } else if (r.status === 'new' && r.uid) {
+        stopRFIDPolling();
+        document.getElementById('reg-uid').textContent = r.uid;
+        clearRegForm();
+        goScreen('sc-register');
+      }
+    } catch { setOnline(false); }
+  };
+  poll();
+  rfidTimer = setInterval(poll, CONFIG.RFID_POLL_MS);
+}
+function stopRFIDPolling() { if (rfidTimer) { clearInterval(rfidTimer); rfidTimer = null; } }
+function restartRFID() { goScreen('sc-rfid'); }
+
+// ── REGISTRATION ───────────────────────────────────────────
+function clearRegForm() {
+  ['reg-name','reg-sid','reg-phone'].forEach(id => document.getElementById(id).value = '');
+  ['f-name','f-sid','f-phone'].forEach(id => document.getElementById(id).classList.remove('error'));
+}
+async function doRegister(e) {
+  e.preventDefault();
+  const name  = document.getElementById('reg-name').value.trim();
+  const sid   = document.getElementById('reg-sid').value.trim();
+  const phone = document.getElementById('reg-phone').value.trim();
+  let ok = true;
+  const inputOf = { 'f-name':'reg-name', 'f-sid':'reg-sid', 'f-phone':'reg-phone' };
+  const fail = (fid) => { document.getElementById(fid).classList.add('error'); document.getElementById(inputOf[fid]).setAttribute('aria-invalid','true'); ok = false; };
+  const pass = (fid) => { document.getElementById(fid).classList.remove('error'); document.getElementById(inputOf[fid]).removeAttribute('aria-invalid'); };
+  name  ? pass('f-name')  : fail('f-name');
+  sid   ? pass('f-sid')   : fail('f-sid');
+  /^09\d{9}$/.test(phone.replace(/[-\s]/g,'')) ? pass('f-phone') : fail('f-phone');
+  if (!ok) { const first = document.querySelector('#reg-form .field.error input'); first && first.focus(); }
+  if (!ok) { announce('Please correct the highlighted fields.'); return; }
+
+  const btn = document.getElementById('btn-register');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Creating…';
+  try {
+    const uid = document.getElementById('reg-uid').textContent;
+    const r = await api('/api/register', { method:'POST', body:{ uid, name, sid, phone: phone.replace(/[-\s]/g,'') } });
+    if (!r.ok) throw new Error(r.error || 'REG_FAILED');
+    session.student = { ...(r.student || { uid, name, sid, phone, balance: 0 }) };
+    refreshDashboard();
+    goScreen('sc-dashboard');
+    toast('Account created. Load credits at the admin counter.');
+  } catch (err) {
+    setOnline(false);
+    toast('Registration failed — please try again.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create Account';
+  }
+}
+
+// ── DASHBOARD ──────────────────────────────────────────────
+function refreshDashboard() {
+  const s = session.student; if (!s) return;
+  document.getElementById('dash-balance').textContent = fmt(s.balance);
+  document.getElementById('dash-name').textContent = s.name + ' · ' + s.sid;
+  document.getElementById('dash-sid').textContent = s.sid;
+  document.getElementById('dash-phone').textContent = s.phone;
+  // Feature: show how many pages the balance covers (cheapest rate: Short Bond, B&W).
+  // Mirrors affordablePages() in src/pricing.mjs — build.mjs guards against drift.
+  const affordable = Math.floor((s.balance || 0) / RATE.SHORT);
+  document.getElementById('dash-afford').textContent =
+    affordable > 0 ? '≈ ' + affordable + ' pages (Short Bond, B&W)' : 'Load credits to start printing';
+}
+function logOut() {
+  stopIdleTimer();
+  session = { student: null, pdf: null, doc: null, selectedPages: [], paper: 'SHORT', copies: 1, mode: 'BW' };
+  document.getElementById('pdf-input').value = '';
+  document.getElementById('upload-result').hidden = true;
+  document.getElementById('btn-to-pages').disabled = true;
+  goScreen('sc-rfid');
+  toast('Logged out.');
+}
+
+// ── PDF UPLOAD (real, on-device rendering) ─────────────────
+async function handlePDF(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const busy = document.getElementById('upload-busy');
+  const errBox = document.getElementById('upload-error');
+  errBox.hidden = true;
+  document.getElementById('upload-result').hidden = true;
+  document.getElementById('btn-to-pages').disabled = true;
+  if (file.type !== 'application/pdf') { showUploadError('That file is not a PDF. Please choose a PDF document.'); return; }
+  busy.hidden = false;
+  try {
+    if (!window.pdfjsLib) throw new Error('PDFJS_MISSING');
+    const buf = await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+    session.pdf = doc;
+    session.doc = { name: file.name, pages: doc.numPages };
+    session.selectedPages = [];
+    document.getElementById('pdf-name').textContent = file.name;
+    document.getElementById('pdf-pages').textContent = doc.numPages + (doc.numPages === 1 ? ' page' : ' pages');
+    document.getElementById('doc-label').textContent = file.name + ' — ' + doc.numPages + ' pages';
+    document.getElementById('upload-result').hidden = false;
+    document.getElementById('btn-to-pages').disabled = false;
+    await buildPageGrid();
+  } catch (err) {
+    showUploadError(err.message === 'PDFJS_MISSING'
+      ? 'PDF engine failed to load. On the kiosk, make sure pdf.js is stored in LittleFS.'
+      : 'Could not read this PDF. It may be corrupted or password-protected.');
+  } finally {
+    busy.hidden = true;
+  }
+}
+function showUploadError(msg) {
+  const box = document.getElementById('upload-error');
+  document.getElementById('upload-error-msg').textContent = msg;
+  box.hidden = false;
+  announce(msg);
+}
+
+// ── PAGE SELECTION (real thumbnails) ───────────────────────
+async function buildPageGrid() {
+  const grid = document.getElementById('page-grid');
+  grid.innerHTML = '';
+  const total = session.doc?.pages || 0;
+  for (let i = 1; i <= total; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'page-cell';
+    cell.id = 'page-' + i;
+    cell.setAttribute('role','checkbox');
+    cell.setAttribute('aria-checked','false');
+    cell.setAttribute('aria-label','Page ' + i);
+    cell.setAttribute('tabindex','0');
+    cell.innerHTML =
+      '<button class="page-view" aria-label="Preview page ' + i + '" onclick="event.stopPropagation(); openPagePreview(' + i + ')"><svg class="ic ic-sm" style="width:15px;height:15px"><use href="#i-search"></use></svg></button>' +
+      '<div class="page-preview-area" id="thumb-' + i + '"><span class="thumb-loading" aria-hidden="true"></span></div>' +
+      '<div class="page-label">Page ' + i + '</div>' +
+      '<div class="page-check" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg></div>';
+    cell.addEventListener('click', () => togglePage(i));
+    cell.addEventListener('keydown', ev => { if (ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); togglePage(i); } });
+    grid.appendChild(cell);
+  }
+  updateSelCount();
+  // Render real thumbnails sequentially so we don't overload the phone.
+  for (let i = 1; i <= total; i++) { await renderThumb(i); }
+}
+async function renderThumb(n) {
+  const holder = document.getElementById('thumb-' + n);
+  if (!holder || !session.pdf) return;
+  try {
+    const page = await session.pdf.getPage(n);
+    const vp0 = page.getViewport({ scale: 1 });
+    const scale = 180 / vp0.width;
+    const vp = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(vp.width);
+    canvas.height = Math.ceil(vp.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    holder.innerHTML = '';
+    holder.appendChild(canvas);
+  } catch {
+    holder.innerHTML = '<span style="font-size:.65rem;color:var(--text-3);">no preview</span>';
+  }
+}
+// ── FULL-SIZE PAGE PREVIEW ─────────────────────────────────
+let previewPage = 1;
+async function openPagePreview(n) {
+  if (!session.pdf) return;
+  previewPage = n;
+  const ov = document.getElementById('preview-overlay');
+  ov.classList.add('show');
+  await renderPreview();
+  document.querySelector('.preview-close')?.focus();
+}
+function closePagePreview() {
+  document.getElementById('preview-overlay').classList.remove('show');
+  document.getElementById('page-' + previewPage)?.focus();
+}
+function previewStep(delta) {
+  const total = session.doc?.pages || 1;
+  previewPage = Math.max(1, Math.min(total, previewPage + delta));
+  renderPreview();
+}
+function previewToggleSelect() { togglePage(previewPage); syncPreviewToggle(); }
+function syncPreviewToggle() {
+  const sel = session.selectedPages.includes(previewPage);
+  const btn = document.getElementById('preview-toggle');
+  btn.textContent = sel ? 'Added — tap to remove' : 'Add to print';
+  btn.className = 'btn ' + (sel ? 'btn-secondary' : 'btn-primary');
+}
+async function renderPreview() {
+  const total = session.doc?.pages || 1;
+  document.getElementById('preview-title').textContent = 'Page ' + previewPage + ' of ' + total;
+  document.getElementById('preview-prev').disabled = previewPage <= 1;
+  document.getElementById('preview-next').disabled = previewPage >= total;
+  syncPreviewToggle();
+  const stage = document.getElementById('preview-stage');
+  stage.innerHTML = '<span class="spinner-dark" aria-hidden="true"></span>';
+  try {
+    const page = await session.pdf.getPage(previewPage);
+    const vp0 = page.getViewport({ scale: 1 });
+    const maxW = Math.min(900, (stage.clientWidth || 360) * 2);
+    const scale = maxW / vp0.width;
+    const vp = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    stage.innerHTML = ''; stage.appendChild(canvas);
+  } catch { stage.innerHTML = '<p style="color:var(--text-3);">Preview unavailable.</p>'; }
+}
+
+function togglePage(n) {
+  const idx = session.selectedPages.indexOf(n);
+  if (idx === -1) session.selectedPages.push(n); else session.selectedPages.splice(idx, 1);
+  session.selectedPages.sort((a,b)=>a-b);
+  const cell = document.getElementById('page-' + n);
+  const checked = session.selectedPages.includes(n);
+  cell.classList.toggle('selected', checked);
+  cell.setAttribute('aria-checked', checked ? 'true' : 'false');
+  updateSelCount();
+}
+function selectAll() {
+  const total = session.doc?.pages || 0;
+  session.selectedPages = Array.from({length: total}, (_,i)=>i+1);
+  for (let i=1;i<=total;i++){ const c=document.getElementById('page-'+i); c?.classList.add('selected'); c?.setAttribute('aria-checked','true'); }
+  updateSelCount();
+}
+function clearAll() {
+  session.selectedPages = [];
+  document.querySelectorAll('.page-cell').forEach(c => { c.classList.remove('selected'); c.setAttribute('aria-checked','false'); });
+  updateSelCount();
+}
+function updateSelCount() {
+  const n = session.selectedPages.length;
+  const badge = document.getElementById('sel-count-badge');
+  badge.textContent = n === 0 ? '0 selected' : n + (n===1?' page':' pages') + ' selected';
+  badge.className = 'badge ' + (n > 0 ? 'badge-ok' : 'badge-neutral');
+  document.getElementById('btn-to-options').disabled = n === 0;
+}
+
+// ── PRINT OPTIONS ──────────────────────────────────────────
+function selectPaper(type) {
+  session.paper = type;
+  const isShort = type === 'SHORT';
+  const short = document.getElementById('opt-short'), long = document.getElementById('opt-long');
+  short.classList.toggle('selected', isShort); short.setAttribute('aria-checked', String(isShort));
+  long.classList.toggle('selected', !isShort);  long.setAttribute('aria-checked', String(!isShort));
+  updateCost();
+}
+function selectMode(m) {
+  session.mode = m;
+  const isBW = m === 'BW';
+  const bw = document.getElementById('opt-bw'), col = document.getElementById('opt-color');
+  bw.classList.toggle('selected', isBW);  bw.setAttribute('aria-checked', String(isBW));
+  col.classList.toggle('selected', !isBW); col.setAttribute('aria-checked', String(!isBW));
+  updateCost();
+}
+function changeCopies(delta) {
+  session.copies = Math.max(1, Math.min(CONFIG.MAX_COPIES, session.copies + delta));
+  document.getElementById('copies-val').textContent = session.copies;
+  // Disable ± at the bounds so the limit is visible, not just silently clamped.
+  const [minus, plus] = document.querySelectorAll('#sc-options .stepper-btn');
+  if (minus) minus.disabled = session.copies <= 1;
+  if (plus)  plus.disabled  = session.copies >= CONFIG.MAX_COPIES;
+  updateCost();
+}
+async function refreshStockForOptions() {
+  changeCopies(0);  // sync stepper bound states with current copies value
+  // Reflect the configured color surcharge (or hide the Color option's price if free).
+  const cl = document.getElementById('color-surcharge-label');
+  if (cl) { cl.textContent = '+₱' + CONFIG.COLOR_SURCHARGE.toFixed(2) + ' / page'; cl.style.display = CONFIG.COLOR_SURCHARGE > 0 ? '' : 'none'; }
+  updateCost();
+  // Best-effort: warn if the chosen paper is out of stock (non-blocking).
+  try {
+    const st = await api('/api/admin/status').catch(()=>null);
+    if (st && st.stock) {
+      stockState = st.stock;
+      const warn = document.getElementById('stock-warn');
+      const low = [];
+      if (st.stock.SHORT === 'LOW') low.push('Short');
+      if (st.stock.LONG === 'LOW')  low.push('Long');
+      if (low.length) {
+        document.getElementById('stock-warn-msg').textContent = low.join(' & ') + ' bond paper is running low — ask the admin if your job fails.';
+        warn.hidden = false;
+      } else warn.hidden = true;
+    }
+  } catch {}
+}
+function updateCost() {
+  const pages = session.selectedPages.length;
+  const baseRate = RATE[session.paper];
+  const surcharge = (session.mode === 'COLOR') ? CONFIG.COLOR_SURCHARGE : 0;
+  const rate  = baseRate + surcharge;
+  const total = pages * rate * session.copies;
+  const bal   = session.student?.balance || 0;
+  const after = bal - total;
+  document.getElementById('sum-pages').textContent  = pages + (pages===1?' page':' pages');
+  document.getElementById('sum-rate').textContent   = '₱' + baseRate.toFixed(2) + ' / page';
+  const colorRow = document.getElementById('sum-color-row');
+  colorRow.hidden = surcharge <= 0;
+  document.getElementById('sum-color').textContent = '+₱' + surcharge.toFixed(2) + ' / page';
+  document.getElementById('sum-copies').textContent = session.copies;
+  document.getElementById('sum-total').textContent  = fmt(total);
+  document.getElementById('sum-bal').textContent    = fmt(bal);
+  document.getElementById('sum-after').textContent  = fmt(Math.max(0, after));
+  document.getElementById('insufficient-notice').hidden = after >= 0;
+  document.getElementById('btn-print-now').disabled = after < 0 || pages === 0;
+}
+
+// ── PRINT JOB (real: reserve → upload JPEGs → finish) ──────
+const PHASES = ['Reserve balance', 'Render & send pages', 'Feed paper & print', 'Complete'];
+function renderPrintSteps(activeIdx, doneUpTo) {
+  document.getElementById('print-steps').innerHTML = PHASES.map((s, i) => {
+    const state = i < doneUpTo ? 'done' : i === activeIdx ? 'active' : '';
+    return '<div class="ps-item"><div class="ps-dot '+state+'" aria-hidden="true">'+(i < doneUpTo ? '<svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg>' : i+1)+'</div><div class="ps-text '+state+'">'+s+'</div></div>';
+  }).join('');
+}
+function setProgress(pct, label, sub) {
+  pct = Math.round(pct);
+  document.getElementById('print-progress').style.width = pct + '%';
+  document.getElementById('print-progress-bar').setAttribute('aria-valuenow', pct);
+  document.getElementById('print-pct').textContent = pct + '%';
+  if (label !== undefined) document.getElementById('print-page-label').textContent = label;
+  if (sub !== undefined)   document.getElementById('printing-sub').textContent = sub;
+}
+
+async function startPrint() {
+  const pages = session.selectedPages.slice();
+  const rate  = RATE[session.paper] + (session.mode === 'COLOR' ? CONFIG.COLOR_SURCHARGE : 0);
+  const total = pages.length * rate * session.copies;
+  if (!session.student || pages.length === 0) return;
+  if (session.student.balance < total) { updateCost(); return; }
+
+  goScreen('sc-printing');
+  document.getElementById('printing-heading').textContent = 'Printing…';
+  renderPrintSteps(0, 0);
+  setProgress(2, 'Page 0 of ' + (pages.length * session.copies), 'Reserving balance…');
+
+  let jobId = null;
+  try {
+    const start = await api('/api/print/start', { method:'POST', body:{ uid: session.student.uid, paper: session.paper, mode: session.mode, copies: session.copies, pages } });
+    if (!start.ok) {
+      return printError(start.error === 'INSUFFICIENT' ? 'Insufficient balance for this job.'
+                        : start.error === 'NO_PAPER' ? 'The printer is out of ' + (session.paper==='SHORT'?'short':'long') + ' bond paper. Please tell the admin.'
+                        : 'Could not start the print job.');
+    }
+    jobId = start.jobId;
+
+    // Phase 2 — render each selected page to JPEG and upload it.
+    renderPrintSteps(1, 1);
+    for (let i = 0; i < pages.length; i++) {
+      setProgress(5 + (i / pages.length) * 80, 'Sending page ' + pages[i] + ' (' + (i+1) + ' of ' + pages.length + ')', 'Rendering page ' + pages[i] + ' on your phone…');
+      const blob = await renderPageJPEG(pages[i]);
+      await api('/api/print/page', { method:'POST', raw:true, body:blob, query:{ job: jobId, page: pages[i] } });
+    }
+
+    // Phase 3 — ESP32 feeds paper and prints all copies.
+    renderPrintSteps(2, 2);
+    setProgress(90, 'Printing ' + (pages.length * session.copies) + ' sheet(s)…', 'Feeding paper and printing — please wait.');
+    const fin = await api('/api/print/finish', { method:'POST', body:{ jobId } });
+    if (!fin.ok) {
+      return printError(fin.error || 'Printing failed at the machine.', fin.refund, fin.balance);
+    }
+
+    // Done.
+    if (typeof fin.balance === 'number') session.student.balance = fin.balance;
+    renderPrintSteps(3, 4);
+    setProgress(100, 'Done', 'Print complete.');
+    showReceipt(total);
+  } catch (err) {
+    setOnline(false);
+    printError('Lost connection to the kiosk during printing. If pages were not printed, no credits were deducted for them — check with the admin.');
+  }
+}
+
+async function renderPageJPEG(n) {
+  const page = await session.pdf.getPage(n);
+  const scale = CONFIG.PRINT_DPI / 72;
+  const vp = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(vp.width);
+  canvas.height = Math.ceil(vp.height);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  // Black & White: convert to grayscale so the printer uses only black ink.
+  if (session.mode === 'BW') {
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const g = (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114) | 0;
+      d[i] = d[i+1] = d[i+2] = g;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  return await new Promise(res => canvas.toBlob(res, 'image/jpeg', CONFIG.JPEG_QUALITY));
+}
+
+function showReceipt(total) {
+  document.getElementById('rcpt-pages').textContent   = (session.selectedPages.length * session.copies) + ' pages';
+  document.getElementById('rcpt-paper').textContent   = session.paper === 'SHORT' ? 'Short Bond' : 'Long Bond';
+  document.getElementById('rcpt-mode').textContent    = session.mode === 'COLOR' ? 'Color' : 'Black & White';
+  document.getElementById('rcpt-copies').textContent  = session.copies;
+  document.getElementById('rcpt-total').textContent   = fmt(total);
+  document.getElementById('rcpt-balance').textContent = fmt(session.student.balance);
+  setTimeout(() => {
+    goScreen('sc-done');
+    const s = session.student;
+    const msg = `Hi ${s.name.split(' ')[0]}! Your SmartVend print job completed. Amount: ${fmt(total)}. New balance: ${fmt(s.balance)}. Thank you for using SmartVend DNSC.`;
+    document.getElementById('sms-body').textContent = msg;
+    document.getElementById('sms-time').textContent = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    openModal('modal-sms');
+    toast('SMS confirmation sent to ' + s.phone);
+  }, 400);
+}
+
+function printError(msg, refund, newBal) {
+  document.getElementById('err-heading').textContent = 'Print Failed';
+  document.getElementById('err-msg').textContent = msg;
+  const card = document.getElementById('err-refund-card');
+  if (typeof refund === 'number' && refund > 0) {
+    if (typeof newBal === 'number') session.student.balance = newBal;
+    document.getElementById('err-refund').textContent = '+' + fmt(refund);
+    document.getElementById('err-new-bal').textContent = fmt(session.student.balance);
+    card.hidden = false;
+  } else card.hidden = true;
+  goScreen('sc-error');
+}
+
+function printAnother() {
+  session.selectedPages = []; session.copies = 1; session.paper = 'SHORT'; session.mode = 'BW';
+  session.pdf = null; session.doc = null;
+  document.getElementById('pdf-input').value = '';
+  document.getElementById('upload-result').hidden = true;
+  document.getElementById('upload-error').hidden = true;
+  document.getElementById('btn-to-pages').disabled = true;
+  selectPaper('SHORT');
+  selectMode('BW');
+  document.getElementById('copies-val').textContent = '1';
+  goScreen('sc-upload');
+}
+
+// ── HISTORY (real) ─────────────────────────────────────────
+async function renderHistory() {
+  const s = session.student; if (!s) return;
+  document.getElementById('hist-sub').textContent = s.name + ' · ' + s.sid;
+  document.getElementById('hist-balance').textContent = fmt(s.balance);
+  const list = document.getElementById('hist-list');
+  list.innerHTML = '<div class="upload-busy"><span class="spinner-dark"></span> Loading…</div>';
+  try {
+    const r = await api('/api/history', { query: { uid: s.uid } });
+    if (typeof r.balance === 'number') { s.balance = r.balance; document.getElementById('hist-balance').textContent = fmt(r.balance); }
+    const txns = r.transactions || [];
+    if (!txns.length) { list.innerHTML = '<p style="font-size:.85rem;color:var(--text-3);padding:8px 0;">No transactions yet.</p>'; return; }
+    list.innerHTML = txns.map(t => txnRow(t)).join('');
+  } catch {
+    list.innerHTML = '<p style="font-size:.85rem;color:var(--danger);padding:8px 0;">Could not load transactions — check your connection.</p>';
+  }
+}
+function txnRow(t) {
+  const isLoad = t.type === 'LOAD';
+  const label = isLoad ? 'Credits Loaded'
+    : 'Print — ' + (t.paper === 'SHORT' ? 'Short' : 'Long') + ' Bond, ' + t.pages + 'pg × ' + t.copies;
+  return '<div class="txn-row"><div class="txn-avatar '+(isLoad?'load':'print')+'" aria-hidden="true">'+(isLoad?'<svg class="ic" aria-hidden="true"><use href="#i-wallet"></use></svg>':'<svg class="ic" aria-hidden="true"><use href="#i-printer"></use></svg>')+'</div>'+
+    '<div class="txn-body"><div class="txn-name">'+label+'</div><div class="txn-meta">'+(t.ts||'')+'</div></div>'+
+    '<div class="txn-amount '+(isLoad?'cr':'dr')+'">'+(isLoad?'+':'-')+fmt(t.amount)+'</div></div>';
+}
+
+// ── ADMIN LOGIN (real) ─────────────────────────────────────
+async function doAdminLogin(e) {
+  e.preventDefault();
+  const pwd = document.getElementById('admin-pwd').value;
+  const field = document.getElementById('f-pwd');
+  const btn = document.getElementById('btn-admin-login');
+  if (!pwd) { field.classList.add('error'); document.getElementById('admin-pwd-err').textContent = 'Please enter the password.'; return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Checking…';
+  try {
+    const r = await api('/api/admin/login', { method:'POST', body:{ password: pwd } });
+    if (!r.ok) { field.classList.add('error'); document.getElementById('admin-pwd-err').textContent = 'Incorrect password.'; announce('Incorrect password.'); return; }
+    field.classList.remove('error');
+    document.getElementById('admin-pwd').value = '';
+    document.getElementById('sc-admin-login').classList.remove('active');
+    const m = document.getElementById('admin-main');
+    m.hidden = false; m.style.display = 'flex';
+    showTab('dashboard');
+    await loadAdminStatus();
+    await renderAdminTxns();
+    startStatusPolling();
+    resetAdminIdle();
+  } catch {
+    field.classList.add('error'); document.getElementById('admin-pwd-err').textContent = 'Cannot reach the kiosk. Check the connection.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Log In';
+  }
+}
+function adminLogout() { stopAdminIdle(); backToPortal(); }
+
+// Show/hide the admin password so it can be verified before submitting.
+function togglePwd() {
+  const inp = document.getElementById('admin-pwd');
+  const btn = document.getElementById('pwd-toggle');
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.setAttribute('aria-pressed', String(show));
+  btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  btn.querySelector('use').setAttribute('href', show ? '#i-eye-off' : '#i-eye');
+  inp.focus();
+}
+
+// Admin session auto-logout (security: never leave the panel open unattended).
+let adminIdleTimer = null;
+function resetAdminIdle() {
+  clearTimeout(adminIdleTimer);
+  if (document.getElementById('admin-main').hidden) return;
+  adminIdleTimer = setTimeout(() => { toast('Admin session timed out.'); adminLogout(); }, CONFIG.ADMIN_IDLE_MS);
+}
+function stopAdminIdle() { clearTimeout(adminIdleTimer); adminIdleTimer = null; }
+
+// ── ADMIN TABS ─────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.admin-tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  const btn = document.getElementById('tab-btn-' + name);
+  btn.classList.add('active'); btn.setAttribute('aria-selected','true');
+  announce(btn.textContent + ' section');
+  if (name === 'txns') renderAdminTxns();
+  if (name === 'dashboard' || name === 'ink') loadAdminStatus();
+  if (name === 'students') renderStudentsAdmin();
+  if (name === 'reports') renderReportsAdmin();
+}
+
+// ── ADMIN STATUS (temp, stock, ink, today) ─────────────────
+function startStatusPolling() {
+  stopStatusPolling();
+  statusTimer = setInterval(() => {
+    if (document.getElementById('admin-main').hidden) { stopStatusPolling(); return; }
+    loadAdminStatus();
+  }, CONFIG.STATUS_POLL_MS);
+}
+function stopStatusPolling() { if (statusTimer) { clearInterval(statusTimer); statusTimer = null; } }
+
+async function loadAdminStatus() {
+  try {
+    const st = await api('/api/admin/status');
+    // Temperature
+    const t = st.temp, thr = st.threshold ?? 45;
+    const tv = document.getElementById('temp-val');
+    tv.textContent = (t == null ? '—' : t + '°C');
+    tv.className = 'temp-val ' + (t >= thr ? 'hot' : t >= thr - 5 ? 'warm' : 'ok');
+    document.getElementById('temp-meta').textContent = 'Threshold: ' + thr + '°C';
+    const notice = document.getElementById('overheat-notice');
+    const alertSub = document.getElementById('admin-alert-sub');
+    if (t >= thr) {
+      notice.className = 'notice notice-danger';
+      notice.innerHTML = '<span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-flame"></use></svg></span><div class="notice-text"><strong>OVERHEAT — '+t+'°C.</strong> Cooling fan on. SMS alert sent. Check ventilation.</div>';
+      alertSub.textContent = 'Overheat ' + t + '°C';
+    } else if (t >= thr - 5) {
+      notice.className = 'notice notice-warn';
+      notice.innerHTML = '<span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg></span><div class="notice-text">Temperature rising — '+t+'°C. Monitoring.</div>';
+      alertSub.textContent = '';
+    } else {
+      notice.className = 'notice notice-ok';
+      notice.innerHTML = '<span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg></span><div class="notice-text">Temperature normal — System OK ('+ (t==null?'—':t+'°C') +')</div>';
+      alertSub.textContent = '';
+    }
+    // Stock
+    if (st.stock) { stockState = st.stock; applyStockUI('LONG', st.stock.LONG); applyStockUI('SHORT', st.stock.SHORT); }
+    // Ink
+    if (st.ink) {
+      setSelect('ink-black', st.ink.black); setSelect('ink-cyan', st.ink.cyan);
+      setSelect('ink-magenta', st.ink.magenta); setSelect('ink-yellow', st.ink.yellow);
+      updateInk();
+    }
+    // Hardware health
+    if (st.printer !== undefined) setHwBadge('hw-printer', st.printer === 'online', st.printer === 'online' ? 'Connected' : 'Offline');
+    if (st.sd !== undefined)      setHwBadge('hw-sd', st.sd === 'ok', st.sd === 'ok' ? 'OK' : 'Error');
+    if (st.sim) {
+      const bars = Math.max(0, Math.min(5, st.sim.signal ?? 0));
+      const el = document.getElementById('hw-sim');
+      el.textContent = '▮'.repeat(bars) + '▯'.repeat(5 - bars) + '  ' + bars + '/5';
+      el.className = 'kv-value ' + (bars >= 3 ? 'ok' : bars >= 1 ? '' : 'danger');
+    }
+    if (st.clients !== undefined) document.getElementById('hw-clients').textContent = st.clients;
+    // Today
+    if (st.today) {
+      document.getElementById('today-jobs').textContent  = st.today.jobs ?? '—';
+      document.getElementById('today-pages').textContent = st.today.pages ?? '—';
+      document.getElementById('today-earn').textContent  = st.today.collected != null ? '₱' + st.today.collected : '—';
+    }
+  } catch { /* keep last-known values; the poll will retry */ }
+}
+function setSelect(id, val) { const el = document.getElementById(id); if (el && val) el.value = val; }
+function setHwBadge(id, ok, text) {
+  const el = document.getElementById(id); if (!el) return;
+  el.textContent = text;
+  el.className = 'badge ' + (ok ? 'badge-ok' : 'badge-danger');
+}
+function applyStockUI(type, status) {
+  const key = type.toLowerCase();
+  const ok = status === 'OK';
+  const dot = document.getElementById('stock-dot-' + key);
+  const bar = document.getElementById('stock-bar-' + key);
+  const badge = document.getElementById('stock-badge-' + key);
+  if (!dot) return;
+  dot.style.background = status == null ? 'var(--text-3)' : ok ? 'var(--ok)' : 'var(--danger)';
+  bar.style.width = status == null ? '0%' : ok ? '80%' : '15%';
+  bar.className = 'stock-bar-fill ' + (ok ? 'ok' : 'low');
+  badge.textContent = status == null ? '—' : status;
+  badge.className = 'badge ' + (status == null ? 'badge-neutral' : ok ? 'badge-ok' : 'badge-danger');
+}
+
+// ── INK ────────────────────────────────────────────────────
+function updateInk() {
+  const vals = ['black','cyan','magenta','yellow'].map(c => [c, document.getElementById('ink-'+c)?.value]);
+  const low = vals.filter(([,v]) => v==='Low'||v==='Empty').map(([c]) => c[0].toUpperCase()+c.slice(1));
+  const notice = document.getElementById('ink-notice'); if (!notice) return;
+  notice.innerHTML = low.length
+    ? '<div class="notice notice-warn"><span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg></span><div class="notice-text">'+low.join(', ')+' ink is low — refill soon.</div></div>'
+    : '<div class="notice notice-ok"><span class="notice-icon" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg></span><div class="notice-text">All ink levels are sufficient.</div></div>';
+}
+async function saveInk() {
+  const body = {
+    black:   document.getElementById('ink-black').value,
+    cyan:    document.getElementById('ink-cyan').value,
+    magenta: document.getElementById('ink-magenta').value,
+    yellow:  document.getElementById('ink-yellow').value,
+  };
+  const btn = document.getElementById('btn-save-ink');
+  btn.disabled = true;
+  try { const r = await api('/api/admin/ink', { method:'POST', body }); if (!r.ok) throw 0; toast('Ink levels saved to /ink.csv'); updateInk(); }
+  catch { toast('Could not save — check the connection.'); }
+  finally { btn.disabled = false; }
+}
+async function refillPaper(type) {
+  try { const r = await api('/api/admin/refill', { method:'POST', body:{ type } }); if (!r.ok) throw 0; applyStockUI(type, 'OK'); toast((type==='LONG'?'Long':'Short')+' bond marked as refilled'); }
+  catch { toast('Could not update — check the connection.'); }
+}
+
+// ── LOAD CREDITS (real) ────────────────────────────────────
+async function lookupStudent() {
+  const q = document.getElementById('load-sid').value.trim();
+  const res = document.getElementById('lookup-result');
+  if (!q) { toast('Enter a student ID first'); return; }
+  try {
+    const r = await api('/api/admin/student', { query: { q } });
+    if (!r.ok || !r.student) { res.hidden = true; toast('Student not found'); return; }
+    const s = r.student;
+    document.getElementById('lookup-name').textContent = s.name;
+    document.getElementById('lookup-sid-disp').textContent = s.sid + ' · ' + s.phone;
+    document.getElementById('lookup-bal').textContent = 'Balance: ' + fmt(s.balance);
+    res.hidden = false; res.dataset.sid = s.sid;
+  } catch { toast('Lookup failed — check the connection.'); }
+}
+function setAmount(n) { document.getElementById('load-amount').value = n; }
+async function doLoadCredits() {
+  const sid = document.getElementById('load-sid').value.trim();
+  const amt = Math.floor(parseFloat(document.getElementById('load-amount').value));
+  if (!sid) { toast('Enter a student ID first'); return; }
+  if (!Number.isFinite(amt) || amt <= 0) { toast('Enter a valid amount'); return; }
+  if (amt > CONFIG.MAX_LOAD) { toast('Maximum ₱' + CONFIG.MAX_LOAD + ' per load'); return; }
+  const btn = document.getElementById('btn-load-credits');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Loading…';
+  try {
+    const r = await api('/api/admin/credits', { method:'POST', body:{ sid, amount: amt } });
+    if (!r.ok) { toast(r.error === 'NOT_FOUND' ? 'Student not found' : 'Could not load credits'); return; }
+    const s = r.student;
+    document.getElementById('lookup-bal').textContent = 'Balance: ' + fmt(s.balance);
+    const ok = document.getElementById('load-ok');
+    document.getElementById('load-ok-msg').textContent = fmt(amt) + ' loaded to ' + s.name + '. New balance: ' + fmt(s.balance);
+    ok.hidden = false; setTimeout(() => ok.hidden = true, 6000);
+    toast('SMS sent — ' + fmt(amt) + ' loaded to ' + s.name);
+    const smsMsg = `Hi ${s.name.split(' ')[0]}! ${fmt(amt)} has been loaded to your SmartVend e-wallet. New balance: ${fmt(s.balance)}. — SmartVend DNSC`;
+    document.getElementById('sms-body').textContent = smsMsg;
+    document.getElementById('sms-time').textContent = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    openModal('modal-sms');
+    renderAdminTxns();
+  } catch { toast('Could not reach the kiosk.'); }
+  finally { btn.disabled = false; btn.textContent = 'Confirm Load Credits'; }
+}
+
+// ── CHECK BALANCE (real) ───────────────────────────────────
+async function checkBalance() {
+  const q = document.getElementById('chk-q').value.trim();
+  const res = document.getElementById('chk-result');
+  if (!q) { toast('Enter an ID or name'); return; }
+  try {
+    const r = await api('/api/admin/student', { query: { q } });
+    if (!r.ok || !r.student) { res.hidden = true; toast('Student not found'); return; }
+    const s = r.student;
+    document.getElementById('chk-name').textContent = s.name;
+    document.getElementById('chk-sid').textContent = s.sid;
+    document.getElementById('chk-phone').textContent = s.phone;
+    document.getElementById('chk-bal').textContent = fmt(s.balance);
+    res.hidden = false;
+  } catch { toast('Search failed — check the connection.'); }
+}
+
+// ── ADMIN TRANSACTIONS (real) ──────────────────────────────
+async function renderAdminTxns() {
+  const list = document.getElementById('admin-txn-list');
+  list.innerHTML = '<div class="upload-busy"><span class="spinner-dark"></span> Loading…</div>';
+  try {
+    const r = await api('/api/admin/transactions');
+    document.getElementById('admin-total').textContent  = r.collectedToday != null ? '₱' + Number(r.collectedToday).toFixed(2) : '—';
+    document.getElementById('admin-active').textContent = r.activeStudents ?? '—';
+    const txns = r.transactions || [];
+    if (!txns.length) { list.innerHTML = '<p style="font-size:.85rem;color:var(--text-3);padding:8px 0;">No transactions yet.</p>'; return; }
+    list.innerHTML = txns.map(t => {
+      const isLoad = t.type === 'LOAD';
+      const label = isLoad ? 'Credits loaded' : 'Print · ' + (t.paper==='SHORT'?'Short':'Long') + ' Bond · ' + t.pages + ' pg × ' + t.copies;
+      return '<div class="txn-row"><div class="txn-avatar '+(isLoad?'load':'print')+'" aria-hidden="true">'+(isLoad?'<svg class="ic" aria-hidden="true"><use href="#i-wallet"></use></svg>':'<svg class="ic" aria-hidden="true"><use href="#i-printer"></use></svg>')+'</div>'+
+        '<div class="txn-body"><div class="txn-name">'+(t.name||'Unknown')+'</div><div class="txn-meta">'+label+' · '+(t.ts||'')+'</div></div>'+
+        '<div class="txn-amount '+(isLoad?'cr':'dr')+'">'+(isLoad?'+':'-')+fmt(t.amount)+'</div></div>';
+    }).join('');
+  } catch {
+    list.innerHTML = '<p style="font-size:.85rem;color:var(--danger);padding:8px 0;">Could not load transactions.</p>';
+  }
+}
+
+// ── UTILITY ────────────────────────────────────────────────
+function fmt(n) { return '₱' + Number(n || 0).toFixed(2); }
+
+// ══════════════════════════════════════════════════════════
+//  PREVIEW-ONLY MOCK BACKEND  (active only with #preview)
+//  Lets you walk every screen with sample data during
+//  development. Never runs on the real kiosk.
+// ══════════════════════════════════════════════════════════
+const _mock = {
+  students: [
+    { uid:'3A:B2:C4:D1', name:'Maria Santos',           sid:'2021-0042', phone:'09171234567', balance:150 },
+    { uid:'1F:2E:3D:4C', name:'Juan dela Cruz',         sid:'2021-0099', phone:'09281234567', balance:50  },
+    { uid:'5B:6A:7E:8F', name:'Ronian Dave Tolentino',  sid:'2022-0317', phone:'09361234567', balance:200 },
+    { uid:'9C:0D:1E:2F', name:'Frank Jay Rato',         sid:'2022-0205', phone:'09451234567', balance:85  },
+    { uid:'4A:5B:6C:7D', name:'Antonio Sargado Jr.',    sid:'2022-0211', phone:'09561234567', balance:120 },
+    { uid:'8E:9F:0A:1B', name:'Chaile Gonzales',        sid:'2023-0101', phone:'09671234567', balance:30  },
+    { uid:'2C:3D:4E:5F', name:'Krista Lim',             sid:'2023-0144', phone:'09781234567', balance:0   },
+    { uid:'6F:7A:8B:9C', name:'Pablo Reyes',            sid:'2024-0012', phone:'09891234567', balance:275 },
+  ],
+  txns: [
+    { name:'Maria Santos',          sid:'2021-0042', type:'LOAD',  amount:150, pages:0, copies:0, paper:'',      ts:'8:12 AM' },
+    { name:'Maria Santos',          sid:'2021-0042', type:'PRINT', amount:6,   pages:3, copies:1, paper:'SHORT', ts:'8:30 AM' },
+    { name:'Ronian Dave Tolentino', sid:'2022-0317', type:'LOAD',  amount:200, pages:0, copies:0, paper:'',      ts:'9:05 AM' },
+    { name:'Ronian Dave Tolentino', sid:'2022-0317', type:'PRINT', amount:14,  pages:7, copies:1, paper:'SHORT', ts:'9:18 AM' },
+    { name:'Frank Jay Rato',        sid:'2022-0205', type:'LOAD',  amount:100, pages:0, copies:0, paper:'',      ts:'9:40 AM' },
+    { name:'Frank Jay Rato',        sid:'2022-0205', type:'PRINT', amount:15,  pages:5, copies:1, paper:'LONG',  ts:'9:55 AM' },
+    { name:'Antonio Sargado Jr.',   sid:'2022-0211', type:'LOAD',  amount:120, pages:0, copies:0, paper:'',      ts:'10:03 AM' },
+    { name:'Pablo Reyes',           sid:'2024-0012', type:'LOAD',  amount:300, pages:0, copies:0, paper:'',      ts:'10:22 AM' },
+    { name:'Pablo Reyes',           sid:'2024-0012', type:'PRINT', amount:25,  pages:5, copies:1, paper:'LONG',  ts:'10:45 AM' },
+    { name:'Chaile Gonzales',       sid:'2023-0101', type:'LOAD',  amount:50,  pages:0, copies:0, paper:'',      ts:'11:08 AM' },
+    { name:'Chaile Gonzales',       sid:'2023-0101', type:'PRINT', amount:20,  pages:10,copies:1, paper:'SHORT', ts:'11:14 AM' },
+    { name:'Juan dela Cruz',        sid:'2021-0099', type:'LOAD',  amount:100, pages:0, copies:0, paper:'',      ts:'1:45 PM' },
+    { name:'Juan dela Cruz',        sid:'2021-0099', type:'PRINT', amount:50,  pages:10,copies:2, paper:'SHORT', ts:'2:02 PM' },
+    { name:'Maria Santos',          sid:'2021-0042', type:'PRINT', amount:12,  pages:4, copies:1, paper:'LONG',  ts:'2:30 PM' },
+    { name:'Pablo Reyes',           sid:'2024-0012', type:'PRINT', amount:0,   pages:0, copies:0, paper:'',      ts:'3:12 PM' },
+  ],
+  stock: { LONG:'OK', SHORT:'OK' },
+  temp: 32, threshold: 45,
+  ink: { black:'Full', cyan:'Half', magenta:'Low', yellow:'Full' },
+  printer: 'online', sim: { signal: 4 }, sd: 'ok', clients: 1,
+  rfidPolls: 0,
+  simulateTap: null,
+  settings: { price_short: 2, price_long: 3, color_surcharge: 1, sms_enabled: true, idle_timeout: 90 },
+};
+async function MOCK(path, method, body, query) {
+  await new Promise(r => setTimeout(r, 160));
+  if (path === '/api/session') {
+    // DEMO: wait for the "Simulate Card Tap" button; don't auto-tap.
+    if (_mock.simulateTap) {
+      const action = _mock.simulateTap; _mock.simulateTap = null;
+      if (action === 'returning') return { status:'known', student: { ..._mock.students[0] } };
+      if (action === 'new') return { status:'new', uid: 'DE:MO:' + Math.random().toString(16).slice(2,6).toUpperCase() + ':' + Math.random().toString(16).slice(2,4).toUpperCase() };
+    }
+    return { status:'idle' };
+  }
+  if (path === '/api/register') {
+    const s = { uid: body.uid, name: body.name, sid: body.sid, phone: body.phone, balance: 0 };
+    _mock.students.push(s); return { ok:true, student:s };
+  }
+  if (path === '/api/print/start') {
+    const s = _mock.students.find(x => x.uid === body.uid);
+    const cost = body.pages.length * RATE[body.paper] * body.copies;
+    if (!s || s.balance < cost) return { ok:false, error:'INSUFFICIENT' };
+    return { ok:true, jobId:'JOB'+Date.now() };
+  }
+  if (path === '/api/print/page') return { ok:true };
+  if (path === '/api/print/finish') {
+    const s = _mock.students.find(x => x.uid === session.student.uid);
+    const cost = session.selectedPages.length * RATE[session.paper] * session.copies;
+    if (s) { s.balance -= cost; _mock.txns.push({ name:s.name, sid:s.sid, type:'PRINT', amount:cost, pages:session.selectedPages.length, copies:session.copies, paper:session.paper, ts:'now' }); }
+    return { ok:true, balance: s ? s.balance : 0 };
+  }
+  if (path === '/api/history') {
+    const s = _mock.students.find(x => x.uid === query.uid);
+    return { balance: s ? s.balance : 0, transactions: [..._mock.txns].filter(t => t.sid === (s&&s.sid)).reverse() };
+  }
+  if (path === '/api/admin/login') return { ok: body.password === 'admin123' };
+  if (path === '/api/admin/status') {
+    const collected = _mock.txns.filter(t=>t.type==='PRINT').reduce((a,t)=>a+t.amount,0);
+    const pages = _mock.txns.filter(t=>t.type==='PRINT').reduce((a,t)=>a+t.pages*t.copies,0);
+    return { temp:_mock.temp, threshold:_mock.threshold, ink:_mock.ink, stock:_mock.stock,
+             printer:_mock.printer, sim:_mock.sim, sd:_mock.sd, clients:_mock.clients,
+             today:{ jobs:_mock.txns.filter(t=>t.type==='PRINT').length, pages, collected } };
+  }
+  if (path === '/api/admin/credits') {
+    const s = _mock.students.find(x => x.sid === body.sid || x.name.toLowerCase().includes(body.sid.toLowerCase()));
+    if (!s) return { ok:false, error:'NOT_FOUND' };
+    s.balance += body.amount; _mock.txns.push({ name:s.name, sid:s.sid, type:'LOAD', amount:body.amount, pages:0, copies:0, paper:'', ts:'now' });
+    return { ok:true, student:s };
+  }
+  if (path === '/api/admin/student') {
+    const q = (query.q||'').toLowerCase();
+    const s = _mock.students.find(x => x.sid === query.q || x.name.toLowerCase().includes(q));
+    return s ? { ok:true, student:s } : { ok:false };
+  }
+  if (path === '/api/admin/ink')    { _mock.ink = body; return { ok:true }; }
+  if (path === '/api/admin/refill') { _mock.stock[body.type] = 'OK'; return { ok:true }; }
+  if (path === '/api/admin/transactions') {
+    const collected = _mock.txns.filter(t=>t.type==='PRINT').reduce((a,t)=>a+t.amount,0);
+    return { collectedToday: collected, activeStudents: _mock.students.length, transactions: [..._mock.txns].reverse() };
+  }
+  return { ok:false, error:'UNKNOWN' };
+}
+
+// ══════════════════════════════════════════════════════════
+//  SEMINAR DEMO HELPERS
+// ══════════════════════════════════════════════════════════
+
+/** Simulate a card tap for the seminar demo (replaces real RC522 reader). */
+function simulateTap(kind) {
+  _mock.simulateTap = kind;
+  const target = document.getElementById('rfid-target');
+  target?.classList.add('busy');
+  announce(kind === 'returning' ? 'Returning student card detected.' : 'New card detected.');
+  toast(kind === 'returning' ? 'Card recognized — welcome back!' : 'New card — please register.');
+  setTimeout(() => target?.classList.remove('busy'), 800);
+}
+
+/** Simulate hardware events from the admin panel. */
+function simHardware(kind) {
+  if (kind === 'overheat')  _mock.temp = 48;
+  if (kind === 'warm')      _mock.temp = 42;
+  if (kind === 'cool')      _mock.temp = 32;
+  if (kind === 'paper-low') _mock.stock.SHORT = 'LOW';
+  if (kind === 'paper-ok')  _mock.stock = { LONG:'OK', SHORT:'OK' };
+  if (kind === 'ink-low')   _mock.ink.magenta = 'Empty';
+  if (kind === 'ink-ok')    _mock.ink = { black:'Full', cyan:'Full', magenta:'Full', yellow:'Full' };
+  if (kind === 'printer-off') _mock.printer = 'offline';
+  if (kind === 'printer-on')  _mock.printer = 'online';
+  loadAdminStatus();
+  toast('Hardware simulated: ' + kind);
+}
+
+/** Open a modal overlay by id. */
+function openModal(id) {
+  document.getElementById(id)?.classList.add('show');
+}
+function closeModal(id) {
+  document.getElementById(id)?.classList.remove('show');
+}
+
+/** Pre-print review modal — populates the review values from session. */
+function openPrintReview() {
+  const pages = session.selectedPages.length;
+  const rate = RATE[session.paper] + (session.mode === 'COLOR' ? CONFIG.COLOR_SURCHARGE : 0);
+  const total = pages * rate * session.copies;
+  const bal = session.student?.balance || 0;
+  if (bal < total) { openModal('modal-insufficient'); return; }
+  document.getElementById('rv-pages').textContent = pages + (pages===1?' page':' pages');
+  document.getElementById('rv-paper').textContent = session.paper === 'SHORT' ? 'Short Bond' : 'Long Bond';
+  document.getElementById('rv-mode').textContent = session.mode === 'COLOR' ? 'Color' : 'B & W';
+  document.getElementById('rv-copies').textContent = session.copies + (session.copies===1?' copy':' copies');
+  document.getElementById('rv-total').textContent = fmt(total);
+  document.getElementById('rv-after').textContent = fmt(Math.max(0, bal - total));
+  openModal('modal-review');
+}
+
+function confirmAndPrint() {
+  closeModal('modal-review');
+  startPrint();
+}
+
+/** Students admin tab — render the list. */
+async function renderStudentsAdmin(filter = '') {
+  const list = document.getElementById('stu-list');
+  const q = (filter || document.getElementById('stu-search')?.value || '').toLowerCase();
+  const rows = _mock.students.filter(s =>
+    !q || s.name.toLowerCase().includes(q) || s.sid.toLowerCase().includes(q) || s.phone.includes(q));
+  document.getElementById('stu-count').textContent = rows.length + ' / ' + _mock.students.length;
+  if (!rows.length) { list.innerHTML = '<p style="font-size:.85rem;color:var(--text-3);padding:16px 0;text-align:center;">No students match that search.</p>'; return; }
+  list.innerHTML = rows.map(s => {
+    const initial = s.name.charAt(0);
+    const low = s.balance < 20;
+    return `<div class="student-row">
+      <div class="student-ava">${initial}</div>
+      <div class="student-info">
+        <div class="student-info-name">${s.name}</div>
+        <div class="student-info-meta mono">${s.sid} · ${s.phone}</div>
+      </div>
+      <div class="student-bal" style="${low?'color:var(--danger)':''}">${fmt(s.balance)}</div>
+    </div>`;
+  }).join('');
+}
+
+/** Reports admin tab — weekly collection chart. */
+function renderReportsAdmin() {
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Today'];
+  const vals = [245, 318, 289, 402, 356, 180, 128];
+  const max = Math.max(...vals);
+  const wrap = document.getElementById('report-chart');
+  if (!wrap) return;
+  wrap.innerHTML = vals.map((v,i) => `
+    <div class="chart-bar" style="height:${(v/max)*100}%">
+      <span class="chart-bar-value">₱${v}</span>
+      <span class="chart-bar-label">${days[i]}</span>
+    </div>`).join('');
+  const total = vals.reduce((a,b)=>a+b, 0);
+  const avg = Math.round(total / vals.length);
+  document.getElementById('report-total').textContent = '₱' + total;
+  document.getElementById('report-avg').textContent = '₱' + avg;
+  document.getElementById('report-peak').textContent = '₱' + max + ' (Thu)';
+  document.getElementById('report-jobs').textContent = '47';
+  document.getElementById('report-pages').textContent = '186';
+  document.getElementById('report-students').textContent = _mock.students.length;
+}
+
+/** Settings tab save handler. */
+function saveSettings() {
+  const sp = parseFloat(document.getElementById('set-short').value) || 2;
+  const lp = parseFloat(document.getElementById('set-long').value) || 3;
+  const cs = parseFloat(document.getElementById('set-color').value) || 1;
+  const sms = document.getElementById('set-sms').checked;
+  const to = parseInt(document.getElementById('set-timeout').value) || 90;
+  _mock.settings = { price_short:sp, price_long:lp, color_surcharge:cs, sms_enabled:sms, idle_timeout:to };
+  RATE.SHORT = sp; RATE.LONG = lp; CONFIG.COLOR_SURCHARGE = cs;
+  CONFIG.IDLE_LOGOUT_MS = to * 1000;
+  toast('Settings saved to SD card');
+}
+
+// ── INIT ───────────────────────────────────────────────────
+// expose demo helpers for inline onclick + console use
+window.simulateTap = simulateTap;
+window.simHardware = simHardware;
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.openPrintReview = openPrintReview;
+window.confirmAndPrint = confirmAndPrint;
+window.renderStudentsAdmin = renderStudentsAdmin;
+window.renderReportsAdmin = renderReportsAdmin;
+window.saveSettings = saveSettings;
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (CONFIG.PREVIEW) {
+    const b = document.getElementById('preview-banner');
+    if (b) { b.hidden = false; b.textContent = 'SEMINAR DEMO MODE · Hardware simulated · All data is sample data'; }
+  }
+  document.getElementById('chk-q')?.addEventListener('keydown', e => { if (e.key==='Enter') checkBalance(); });
+  document.getElementById('load-sid')?.addEventListener('keydown', e => { if (e.key==='Enter') lookupStudent(); });
+  document.getElementById('load-amount')?.addEventListener('keydown', e => { if (e.key==='Enter') doLoadCredits(); });
+  // Any interaction from a logged-in student resets the idle auto-logout timer.
+  ['pointerdown','keydown','touchstart'].forEach(ev =>
+    document.addEventListener(ev, () => {
+      if (idleEligible()) resetIdleTimer();
+      if (!document.getElementById('admin-main').hidden) resetAdminIdle();
+    }, { passive: true }));
+  // Esc closes the full-size page preview.
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('preview-overlay').classList.contains('show')) closePagePreview();
+  });
+  pingKiosk();  // set the portal connection indicator
+});
+</script>
